@@ -1,7 +1,7 @@
 # openzi-itworker
 
-The in-account side of openzi. It runs on the EC2 the workflow launches in account
-B and builds the app-hosting platform there, then serves the deploy API. Its code is
+The in-account side of openzi. It runs on the EC2 the workflow launches in the account
+and builds the app-hosting platform there, then serves the deploy API. Its code is
 pinned by the workflow's commit (the launch user-data clones an exact sha), so what
 runs here is what the signed proof attests to.
 

@@ -1,4 +1,4 @@
-"""openzi-itworker — runs on the EC2 in the target account (B).
+"""openzi-itworker — runs on the EC2 in the target account.
 
 Two modes, dispatched by ``python -m openzi_itworker <mode>``:
 

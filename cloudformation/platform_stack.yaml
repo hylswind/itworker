@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  openzi platform (account B). A self-built VPC with an internet-facing app ALB for
+  openzi platform (the target account). A self-built VPC with an internet-facing app ALB for
   app+commit-addressed routing (/{app}/{sha}/* and /{app}/info.json); an
   internet-facing control ALB in the DEFAULT VPC fronting the itworker instance
   (admin subdomain, bearer-key authenticated) that runs init/deploy/delete/recover;
@@ -23,7 +23,7 @@ Parameters:
     Type: String
   HostedZoneId:
     Type: String
-    Description: B's public hosted zone (created by RegisterDomain), for ACM DNS validation and alias records.
+    Description: the account's public hosted zone (created by RegisterDomain), for ACM DNS validation and alias records.
   ConsolePassword:
     Type: String
     NoEcho: true
@@ -91,7 +91,7 @@ Resources:
       RouteTableId: !Ref RouteTable
 
   # --- shared cert: apex ${Domain} (app ALB) + admin.${Domain} (control ALB), both
-  # DNS-validated in B's hosted zone. One cert, attached to both listeners. ---
+  # DNS-validated in the account's hosted zone. One cert, attached to both listeners. ---
   PlatformCert:
     Type: AWS::CertificateManager::Certificate
     Properties:
