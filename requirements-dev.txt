@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+moto[ec2,iam,ssm]
+cfn-lint

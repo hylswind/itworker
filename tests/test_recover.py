@@ -1,0 +1,174 @@
+import json
+
+from fakes import FakeElb, FakeSsm, FakeCtx, platform
+
+from openzi_itworker.server import actions
+
+
+# ---------- signin teardown against the REAL botocore model ----------
+
+def test_recover_signin_teardown_matches_the_real_model():
+    """Validate the exact kwargs (lowerCamelCase targetId / statementId) against the
+    real signin model via Stubber — no network. Guards a casing mistake a hand fake
+    would accept."""
+    import boto3
+    from botocore.stub import Stubber
+
+    signin = boto3.client("signin", region_name="us-east-1",
+                          aws_access_key_id="testing", aws_secret_access_key="testing")
+    stub = Stubber(signin)
+    stub.add_response("delete_console_authorization_configuration",
+                      {"targetId": "123456789012", "scope": "ACCOUNT",
+                       "consoleAuthorizationEnabled": False},
+                      {"targetId": "123456789012"})
+    stub.add_response("list_resource_permission_statements",
+                      {"permissionStatements": [{"sid": "stmt-1"}]}, {})
+    stub.add_response("delete_resource_permission_statement", {}, {"statementId": "stmt-1"})
+    with stub:
+        actions._delete_signin_lock(signin, "123456789012")
+    stub.assert_no_pending_responses()
+
+
+# ---------- instance-termination gate ----------
+
+class _FakeEc2Instances:
+    def __init__(self, states):
+        self._states = {i: list(seq) for i, seq in states.items()}
+
+    def describe_instances(self, Filters):
+        ids = next(f["Values"] for f in Filters if f["Name"] == "instance-id")
+        insts = []
+        for i in ids:
+            seq = self._states.get(i)
+            if not seq:
+                continue
+            state = seq.pop(0) if len(seq) > 1 else seq[0]
+            insts.append({"InstanceId": i, "State": {"Name": state}})
+        return {"Reservations": [{"Instances": insts}]}
+
+    def describe_launch_templates(self, Filters):
+        return {"LaunchTemplates": []}
+
+
+def test_wait_instances_terminated_blocks_until_gone(monkeypatch):
+    monkeypatch.setattr(actions, "_TERMINATE_POLL", 0)
+    ec2 = _FakeEc2Instances({"i-1": ["running", "shutting-down", "terminated"]})
+    actions._wait_instances_terminated(ec2, ["i-1"])
+
+
+def test_wait_instances_terminated_retries_transient_error(monkeypatch):
+    monkeypatch.setattr(actions, "_TERMINATE_POLL", 0)
+
+    class _Flaky(_FakeEc2Instances):
+        def __init__(self):
+            super().__init__({"i-1": ["running", "terminated"]})
+            self.calls = 0
+
+        def describe_instances(self, Filters):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("Throttling")
+            return super().describe_instances(Filters)
+
+    actions._wait_instances_terminated(_Flaky(), ["i-1"])
+
+
+# ---------- full recover ----------
+
+class _RecoverElb(FakeElb):
+    def __init__(self, rules):
+        super().__init__(rules=rules)
+        self.deleted_rules, self.deleted_tgs = [], []
+
+    def delete_rule(self, RuleArn):
+        self.deleted_rules.append(RuleArn)
+
+    def describe_target_groups(self):
+        return {"TargetGroups": [{"TargetGroupName": "openzi-tg-1-abc1234",
+                                  "TargetGroupArn": "arn:tg/1"}]}
+
+    def delete_target_group(self, TargetGroupArn):
+        self.deleted_tgs.append(TargetGroupArn)
+
+
+class _RecoverAsg:
+    def __init__(self, groups):
+        self._groups = groups
+        self.deleted = []
+
+    def describe_auto_scaling_groups(self):
+        return {"AutoScalingGroups": self._groups}
+
+    def delete_auto_scaling_group(self, AutoScalingGroupName, ForceDelete):
+        self.deleted.append(AutoScalingGroupName)
+
+
+class _RecoverIam:
+    def get_paginator(self, op):
+        class _P:
+            def paginate(self):
+                return [{"Roles": []}]
+        return _P()
+
+
+class _RecoverSignin:
+    def __init__(self):
+        self.unlocked = False
+
+    def delete_console_authorization_configuration(self, targetId):
+        self.unlocked = True
+
+    def list_resource_permission_statements(self, **kwargs):
+        return {"permissionStatements": [{"sid": "stmt-1"}]}
+
+    def delete_resource_permission_statement(self, statementId):
+        pass
+
+
+def _recover_ctx(monkeypatch, groups, instance_states, ec2=None):
+    monkeypatch.setattr(actions, "_ct_log_proof", lambda ctx: None)
+    monkeypatch.setattr(actions, "_TERMINATE_POLL", 0)
+    monkeypatch.setattr(actions.time, "sleep", lambda *_: None)
+    ssm = FakeSsm({
+        "/openzi/apps/app-one.dev": json.dumps({"app": "app-one.dev"}),
+        "/openzi/versions/app-one.dev/abc1234": json.dumps({"asg_name": "openzi-asg-1-abc1234"}),
+        "/openzi/secrets/app-one.dev/abc1234": "secret",
+        "/openzi/priority-counter": "1",
+    })
+    signin = _RecoverSignin()
+    clients = {"elbv2": _RecoverElb([{"IsDefault": True}]),
+               "autoscaling": _RecoverAsg(groups),
+               "ec2": ec2 or _RecoverEc2(instance_states),
+               "ssm": ssm, "iam": _RecoverIam(), "signin": signin}
+    return FakeCtx(clients, platform()), ssm, signin
+
+
+class _RecoverEc2(_FakeEc2Instances):
+    pass
+
+
+def test_recover_wipes_apps_versions_secrets_and_unlocks_after_termination(monkeypatch):
+    groups = [{"AutoScalingGroupName": "openzi-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    ctx, ssm, signin = _recover_ctx(monkeypatch, groups, {"i-1": ["running", "terminated"]})
+    actions.recover(ctx, {})
+    assert not [n for n in ssm.params if n.startswith("/openzi/apps/")]
+    assert not [n for n in ssm.params if n.startswith("/openzi/versions/")]
+    assert not [n for n in ssm.params if n.startswith("/openzi/secrets/")]
+    assert "/openzi/priority-counter" in ssm.params
+    assert signin.unlocked
+
+
+def test_recover_unlocks_strictly_after_instances_terminate(monkeypatch):
+    groups = [{"AutoScalingGroupName": "openzi-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    holder = {}
+
+    class _GatedEc2(_RecoverEc2):
+        def describe_instances(self, Filters):
+            assert holder["signin"].unlocked is False
+            return super().describe_instances(Filters)
+
+    ec2 = _GatedEc2({"i-1": ["running", "running", "terminated"]})
+    ctx, ssm, signin = _recover_ctx(monkeypatch, groups, None, ec2=ec2)
+    holder["signin"] = signin
+    actions.recover(ctx, {})
+    assert signin.unlocked
