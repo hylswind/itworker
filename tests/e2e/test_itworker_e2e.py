@@ -22,11 +22,14 @@ Env:
                               NOTE: the instance clones from GitHub, so this must be
                               PUSHED — local uncommitted work is not what runs.
   OPENZI_APP_REPO             owner/name of an app with a Dockerfile (optional; the
-  OPENZI_APP_COMMIT           deploy phase is skipped when either is unset)
+  OPENZI_APP_COMMIT           deploy phase is skipped when either is unset). Accepts
+                              a comma-separated list — two or more versions is what
+                              proves per-version secret isolation.
   OPENZI_E2E_KEEP=1           leave everything standing for debugging (no teardown)
 """
 
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -47,7 +50,7 @@ API_KEY = os.environ["OPENZI_API_KEY"]
 ITWORKER_REPO = os.environ.get("OPENZI_ITWORKER_REPO", "hylswind/itworker")
 ITWORKER_COMMIT = os.environ.get("OPENZI_ITWORKER_COMMIT", "main")
 APP_REPO = os.environ.get("OPENZI_APP_REPO")
-APP_COMMIT = os.environ.get("OPENZI_APP_COMMIT")
+APP_COMMITS = [c.strip() for c in os.environ.get("OPENZI_APP_COMMIT", "").split(",") if c.strip()]
 
 SETUP_TIMEOUT = float(os.environ.get("OPENZI_E2E_SETUP_TIMEOUT", 3600))
 DEPLOY_TIMEOUT = float(os.environ.get("OPENZI_E2E_DEPLOY_TIMEOUT", 2400))
@@ -111,12 +114,30 @@ def test_control_plane_requires_the_api_key(platform):
     assert status == 403
 
 
-@pytest.mark.skipif(not (APP_REPO and APP_COMMIT),
+_SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
+
+
+def _served_secret_hash(url: str) -> str:
+    """The example app publishes sha256(OPENZI_VERSION_SECRET) — the per-version
+    secret made observable without exposing it. Pull it back out of the page."""
+    status, body = driver.fetch(url)
+    assert status == 200, f"{url} stopped serving after a later deploy: {status}"
+    match = _SHA256.search(body)
+    assert match, f"no version-secret hash at {url} (app got no secret?): {body[:300]}"
+    return match.group()
+
+
+@pytest.mark.skipif(not (APP_REPO and APP_COMMITS),
                     reason="set OPENZI_APP_REPO + OPENZI_APP_COMMIT to exercise deploy")
 def test_app_lifecycle(platform):
-    """init → deploy → the app is served → delete."""
+    """init → deploy each version → every version is served on its own path with its
+    own secret → delete each.
+
+    Deploying more than one version is the part that proves the platform's central
+    claim: the same app, at the same instant, hands each version a different
+    OPENZI_VERSION_SECRET, so one version cannot read another's."""
     app = os.environ.get("OPENZI_APP_NAME", "e2e.dev")
-    short = APP_COMMIT[:7]
+    shorts = [c[:7] for c in APP_COMMITS]
 
     log(f"init {app} -> {APP_REPO}")
     platform.run("init", {"app": app, "repo": APP_REPO}, ACTION_TIMEOUT)
@@ -124,14 +145,22 @@ def test_app_lifecycle(platform):
     assert status == 200, f"info.json not published: {status}"
     assert APP_REPO.split("/")[-1] in body or "repo_id" in body
 
-    log(f"deploy {app}@{short} (Image Builder bake, ~10-15 min)")
-    platform.run("deploy", {"app": app, "commit": APP_COMMIT}, DEPLOY_TIMEOUT)
+    for commit, short in zip(APP_COMMITS, shorts):
+        log(f"deploy {app}@{short} (Image Builder bake, ~10-15 min)")
+        platform.run("deploy", {"app": app, "commit": commit}, DEPLOY_TIMEOUT)
+        driver.wait_for_app(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
 
-    log("fetching the deployed app")
-    driver.wait_for_app(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
+    # Read every version only now, after the last deploy: an earlier version still
+    # answering on its own path is what makes them concurrent rather than sequential.
+    hashes = {short: _served_secret_hash(f"https://{DOMAIN}/{app}/{short}/") for short in shorts}
+    for short, digest in hashes.items():
+        log(f"  {short} version-secret sha256 {digest}")
+    assert len(set(hashes.values())) == len(hashes), \
+        f"versions share a secret — per-version isolation is broken: {hashes}"
 
-    log(f"delete {app}@{short}")
-    platform.run("delete", {"app": app, "commit": APP_COMMIT}, ACTION_TIMEOUT)
+    for commit, short in zip(APP_COMMITS, shorts):
+        log(f"delete {app}@{short}")
+        platform.run("delete", {"app": app, "commit": commit}, ACTION_TIMEOUT)
 
 
 def test_recover_tears_the_platform_down(platform):

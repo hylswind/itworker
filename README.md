@@ -73,6 +73,8 @@ network.
 
 `tests/e2e/` brings itworker up in a real account and drives the whole lifecycle:
 setup → control-plane health → init → deploy → the app is served → delete → recover.
+Passing two or more commits deploys them side by side and asserts they were handed
+*different* `OPENZI_VERSION_SECRET`s — per-version isolation, observed end to end.
 The driver plays the GitHub workflow's role *minus* the destructive half — it creates
 the admin role and launches the instance, but uses **no root key and never locks the
 console** — so the same test account can be reused indefinitely.
@@ -83,7 +85,7 @@ export OPENZI_ASSUME_ROLE_ARN=arn:aws:iam::<test-account>:role/<assumable-role>
 export OPENZI_DOMAIN=<a domain the test account already owns>
 export OPENZI_API_KEY=<any string; installed as the control-plane key>
 export OPENZI_ITWORKER_COMMIT=<pushed sha>          # default: main
-export OPENZI_APP_REPO=owner/app OPENZI_APP_COMMIT=<sha>   # optional: deploy phase
+export OPENZI_APP_REPO=owner/app OPENZI_APP_COMMIT=<sha>[,<sha>…]  # optional: deploy phase
 pytest tests/e2e -s
 ```
 
