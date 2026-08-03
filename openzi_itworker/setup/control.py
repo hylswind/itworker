@@ -8,7 +8,7 @@ group (ingress :8080 from the control ALB) — all in the default VPC. Here we:
   2. create the control launch template (boots straight into server mode under the
      admin instance profile) and the control ASG;
   3. attach this instance to the ASG, which registers it into the control target
-     group and raises desired capacity to 1.
+     group and raises desired capacity to 1, then raise the ASG's floor to match.
 After the daily restart terminates this instance, the ASG relaunches from the LT."""
 
 from __future__ import annotations
@@ -31,9 +31,11 @@ def wire_control(ec2, asg, cfg, outputs: dict, instance_id: str,
 
     log("  creating control launch template + ASG")
     lt_id = _create_control_lt(ec2, cfg, control_sg)
+    # Born empty (min AND desired 0 — EC2 rejects a desired below min): the control
+    # plane is THIS already-running instance, so the ASG must not launch a second one.
     asg.create_auto_scaling_group(
         AutoScalingGroupName=config.CONTROL_ASG_NAME,
-        MinSize=1, MaxSize=2, DesiredCapacity=0,
+        MinSize=0, MaxSize=2, DesiredCapacity=0,
         HealthCheckType="ELB", HealthCheckGracePeriod=180,
         LaunchTemplate={"LaunchTemplateId": lt_id, "Version": "$Latest"},
         TargetGroupARNs=[control_tg],
@@ -42,6 +44,10 @@ def wire_control(ec2, asg, cfg, outputs: dict, instance_id: str,
     log(f"  attaching {instance_id} to {config.CONTROL_ASG_NAME}")
     asg.attach_instances(InstanceIds=[instance_id],
                          AutoScalingGroupName=config.CONTROL_ASG_NAME)
+
+    # Attach raised desired to 1; raise the floor to match, so the daily restart's
+    # termination is replaced instead of leaving the control plane at zero.
+    asg.update_auto_scaling_group(AutoScalingGroupName=config.CONTROL_ASG_NAME, MinSize=1)
 
 
 def _attach_sg(ec2, instance_id: str, sg_id: str) -> None:

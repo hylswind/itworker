@@ -31,15 +31,32 @@ class FakeEc2:
 
 
 class FakeAsg:
+    """Enforces the one rule EC2 enforces here: desired capacity must sit within
+    [min, max]. A fake that accepted anything is why a MinSize=1/DesiredCapacity=0
+    create — rejected by the real API — got as far as a live account."""
+
     def __init__(self):
         self.created = None
         self.attached = None
+        self.min = self.max = self.desired = None
 
     def create_auto_scaling_group(self, **kwargs):
         self.created = kwargs
+        self._set(kwargs["MinSize"], kwargs["MaxSize"], kwargs["DesiredCapacity"])
 
     def attach_instances(self, InstanceIds, AutoScalingGroupName):
         self.attached = (InstanceIds, AutoScalingGroupName)
+        self._set(self.min, self.max, self.desired + len(InstanceIds))
+
+    def update_auto_scaling_group(self, AutoScalingGroupName, **kwargs):
+        self._set(kwargs.get("MinSize", self.min), kwargs.get("MaxSize", self.max),
+                  kwargs.get("DesiredCapacity", self.desired))
+
+    def _set(self, min_size, max_size, desired):
+        if not min_size <= desired <= max_size:
+            raise ValueError(f"Desired capacity:{desired} must be between the specified "
+                             f"min size:{min_size} and max size:{max_size}")
+        self.min, self.max, self.desired = min_size, max_size, desired
 
 
 def test_wire_control_attaches_sg_lt_asg_and_instance():
@@ -61,5 +78,9 @@ def test_wire_control_attaches_sg_lt_asg_and_instance():
 
     assert asg.created["AutoScalingGroupName"] == config.CONTROL_ASG_NAME
     assert asg.created["TargetGroupARNs"] == ["arn:tg/ctrl"]
-    assert asg.created["DesiredCapacity"] == 0  # attach raises it to 1
+    # born empty, so no second control instance is launched alongside this one
+    assert asg.created["DesiredCapacity"] == 0 and asg.created["MinSize"] == 0
     assert asg.attached == (["i-123"], config.CONTROL_ASG_NAME)
+    # ...and left holding exactly this instance, with a floor that makes the daily
+    # restart's termination get replaced rather than scale the control plane to zero
+    assert (asg.min, asg.desired) == (1, 1)
