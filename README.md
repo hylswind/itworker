@@ -93,9 +93,12 @@ Notes:
 
 - The instance **clones itworker from GitHub**, so it runs a *pushed* commit —
   uncommitted local work is not what gets tested.
-- The domain is reused, not bought (`OPENZI_SKIP_DOMAIN=1` internally), so a round
+- The domain is reused, not bought (`OPENZI_SKIP_DOMAIN` defaults to 1), so a round
   costs no registration fee; it does create real billable infra (two ALBs, EC2,
-  Image Builder) for ~40-60 min.
+  Image Builder) for ~40-60 min. Set `OPENZI_SKIP_DOMAIN=0` (plus `OPENZI_CONTACT`)
+  to exercise the real `RegisterDomain` path instead — that buys the domain, which
+  is not refundable, and teardown keeps it. Allow much longer for setup: a new
+  domain's NS delegation has to propagate before its ACM cert can validate.
 - Teardown always runs. `OPENZI_E2E_KEEP=1` leaves everything standing for
   debugging; the domain and hosted zone are kept either way.
 - If setup wedges, nobody can SSH in — assume into the account and use **SSM Session

@@ -16,6 +16,12 @@ Env:
                               account, so a wedged round is still recoverable)
   OPENZI_DOMAIN               a domain the test account ALREADY OWNS (skip-domain
                               path — no purchase); its hosted zone gets cleaned
+  OPENZI_SKIP_DOMAIN          default 1. Set to 0 to exercise the real registration
+                              path instead — that BUYS OPENZI_DOMAIN (~$3, not
+                              refundable, and teardown keeps it), so the domain must
+                              be one the account does NOT own yet.
+  OPENZI_CONTACT              registration contact JSON; required when
+                              OPENZI_SKIP_DOMAIN=0, unused otherwise
   OPENZI_API_KEY              control-plane bearer key to install and use
   OPENZI_ITWORKER_REPO        owner/name to clone      (default hylswind/itworker)
   OPENZI_ITWORKER_COMMIT      commit/ref to check out  (default main)
@@ -28,6 +34,7 @@ Env:
   OPENZI_E2E_KEEP=1           leave everything standing for debugging (no teardown)
 """
 
+import json
 import os
 import re
 import time
@@ -42,11 +49,15 @@ if os.environ.get("OPENZI_E2E") != "1":
 
 import boto3  # noqa: E402
 
+from openzi_itworker.setup import contacts  # noqa: E402
+
 import driver  # noqa: E402  (tests/e2e is on sys.path via conftest)
 
 ASSUME = os.environ["OPENZI_ASSUME_ROLE_ARN"]
 DOMAIN = os.environ["OPENZI_DOMAIN"]
 API_KEY = os.environ["OPENZI_API_KEY"]
+SKIP_DOMAIN = os.environ.get("OPENZI_SKIP_DOMAIN", "1") in ("1", "true", "True")
+CONTACT = json.loads(os.environ.get("OPENZI_CONTACT") or "{}")
 ITWORKER_REPO = os.environ.get("OPENZI_ITWORKER_REPO", "hylswind/itworker")
 ITWORKER_COMMIT = os.environ.get("OPENZI_ITWORKER_COMMIT", "main")
 APP_REPO = os.environ.get("OPENZI_APP_REPO")
@@ -77,6 +88,12 @@ def session():
 def platform(session):
     """Bring itworker up, yield a control-plane client, then always tear down."""
     ec2, ssm, iam = session.client("ec2"), session.client("ssm"), session.client("iam")
+    if not SKIP_DOMAIN:
+        # Checked here, not on the instance: a contact rejected mid-setup would have
+        # already cost a launch, and a half-registered domain is not refundable.
+        missing = [k for k in contacts.REQUIRED if not CONTACT.get(k)]
+        assert not missing, f"OPENZI_SKIP_DOMAIN=0 buys {DOMAIN}; contact is missing {missing}"
+        log(f"buying {DOMAIN} — the registration path, not the reuse path")
     try:
         log("phase 1: create the admin role (the workflow's step 1)")
         profile = driver.create_admin_role(iam, log)
@@ -86,7 +103,8 @@ def platform(session):
         end_epoch = int(datetime.now(timezone.utc).timestamp())
         user_data = driver.build_setup_userdata(
             repo=ITWORKER_REPO, commit=ITWORKER_COMMIT, region=driver.config.REGION,
-            domain=DOMAIN, end_epoch=end_epoch, api_key=API_KEY)
+            domain=DOMAIN, end_epoch=end_epoch, api_key=API_KEY,
+            skip_domain=SKIP_DOMAIN, contact=CONTACT)
         driver.launch(ec2, ssm, user_data, profile, log)
 
         log("phase 3: wait for the setup marker (domain check, stack, control wiring)")

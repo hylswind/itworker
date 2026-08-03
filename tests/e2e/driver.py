@@ -30,6 +30,10 @@ _EC2_TRUST = json.dumps({
 
 # The instance clones itworker from GitHub, so the e2e exercises a PUSHED commit —
 # uncommitted local work is not what runs.
+#
+# Kept deliberately identical to openzi_workflow.userdata._SETUP_TEMPLATE, down to
+# the shell quoting: the point of this driver is that itworker sees exactly what the
+# workflow would hand it. If the two drift, the e2e stops testing the real thing.
 _SETUP_USERDATA = r"""#!/bin/bash
 set -euxo pipefail
 dnf install -y git python3.11 python3.11-pip
@@ -41,12 +45,12 @@ git checkout {commit}
 export AWS_DEFAULT_REGION={region}
 export OPENZI_DOMAIN={domain}
 export OPENZI_END={end_epoch}
-export OPENZI_API_KEY='{api_key}'
+export OPENZI_API_KEY={api_key}
 export OPENZI_REPO={repo}
 export OPENZI_COMMIT={commit}
 export OPENZI_REGION={region}
-export OPENZI_SKIP_DOMAIN=1
-export OPENZI_CONTACT='{{}}'
+export OPENZI_SKIP_DOMAIN={skip_domain}
+export OPENZI_CONTACT={contact_shell}
 exec python3.11 -m openzi_itworker setup
 """
 
@@ -66,12 +70,22 @@ def create_admin_role(iam, log=print) -> str:
     return name
 
 
+def _shquote(value: str) -> str:
+    """Single-quote a value for safe use in the exported shell assignment."""
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def build_setup_userdata(*, repo: str, commit: str, region: str, domain: str,
-                         end_epoch: int, api_key: str) -> str:
-    """Mirror of the workflow's setup user-data, pinned to the skip-domain path (the
-    e2e reuses an owned domain, so no ~$3 purchase per run)."""
-    return _SETUP_USERDATA.format(repo=repo, commit=commit, region=region, domain=domain,
-                                  end_epoch=end_epoch, api_key=api_key)
+                         end_epoch: int, api_key: str, skip_domain: bool = True,
+                         contact: dict | None = None) -> str:
+    """Mirror of the workflow's setup user-data. skip_domain defaults to True — a
+    reused domain costs nothing per round — but passing False exercises the real
+    RegisterDomain path, which BUYS the domain (~$3, non-refundable) and needs a
+    contact carrying every field in contacts.REQUIRED."""
+    return _SETUP_USERDATA.format(
+        repo=repo, commit=commit, region=region, domain=domain, end_epoch=end_epoch,
+        api_key=_shquote(api_key), skip_domain="1" if skip_domain else "0",
+        contact_shell=_shquote(json.dumps(contact or {})))
 
 
 def launch(ec2, ssm, user_data: str, profile_name: str, log=print) -> str:
