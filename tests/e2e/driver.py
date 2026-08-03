@@ -169,22 +169,31 @@ class ControlClient:
 
 
 def fetch(url: str, timeout: float = 30) -> tuple[int, str]:
+    """Status and body. A network-level failure — DNS that hasn't propagated, a TLS
+    reset from an ALB still coming up — comes back as status 0 instead of raising,
+    so a polling caller keeps polling. Raising there would abandon a 15-minute wait
+    over one blip. (HTTPError first: it is a subclass of the OSError catch.)"""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return resp.status, resp.read().decode(errors="replace")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode(errors="replace")
+    except OSError as exc:  # URLError, socket timeout, TLS — all transient here
+        return 0, str(exc)
 
 
-def wait_for_app(url: str, timeout: float, interval: float = 15, log=print) -> str:
-    """An app instance needs a moment past deploy to boot and pass its health check."""
+def wait_for_200(url: str, timeout: float, interval: float = 15, log=print) -> str:
+    """Poll until the URL serves 200. Nothing here is ready the instant the API call
+    that created it returns: an ALB rule takes seconds to reach every node (until it
+    does, the listener's default 404 answers), and a freshly deployed app instance
+    has to boot and pass its health check first."""
     deadline = time.monotonic() + timeout
     while True:
         status, body = fetch(url)
         if status == 200:
             return body
         if time.monotonic() >= deadline:
-            raise TimeoutError(f"{url} never served 200 (last {status})")
+            raise TimeoutError(f"{url} never served 200 (last {status}): {body[:200]}")
         log(f"  ...waiting for {url} (last {status})")
         time.sleep(interval)
 

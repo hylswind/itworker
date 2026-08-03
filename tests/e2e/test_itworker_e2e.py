@@ -119,9 +119,10 @@ _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
 
 def _served_secret_hash(url: str) -> str:
     """The example app publishes sha256(OPENZI_VERSION_SECRET) — the per-version
-    secret made observable without exposing it. Pull it back out of the page."""
-    status, body = driver.fetch(url)
-    assert status == 200, f"{url} stopped serving after a later deploy: {status}"
+    secret made observable without exposing it. Pull it back out of the page. The
+    short wait absorbs a blip, not a regression: a version that genuinely stopped
+    being served still fails, on the timeout."""
+    body = driver.wait_for_200(url, timeout=60, interval=10, log=log)
     match = _SHA256.search(body)
     assert match, f"no version-secret hash at {url} (app got no secret?): {body[:300]}"
     return match.group()
@@ -141,14 +142,15 @@ def test_app_lifecycle(platform):
 
     log(f"init {app} -> {APP_REPO}")
     platform.run("init", {"app": app, "repo": APP_REPO}, ACTION_TIMEOUT)
-    status, body = driver.fetch(f"https://{DOMAIN}/{app}/info.json")
-    assert status == 200, f"info.json not published: {status}"
+    # init returns as soon as the ALB rule is CREATED; the rule needs a few more
+    # seconds to reach every node, and until then the listener's default 404 answers.
+    body = driver.wait_for_200(f"https://{DOMAIN}/{app}/info.json", timeout=180, log=log)
     assert APP_REPO.split("/")[-1] in body or "repo_id" in body
 
     for commit, short in zip(APP_COMMITS, shorts):
         log(f"deploy {app}@{short} (Image Builder bake, ~10-15 min)")
         platform.run("deploy", {"app": app, "commit": commit}, DEPLOY_TIMEOUT)
-        driver.wait_for_app(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
+        driver.wait_for_200(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
 
     # Read every version only now, after the last deploy: an earlier version still
     # answering on its own path is what makes them concurrent rather than sequential.
