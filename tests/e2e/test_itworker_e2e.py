@@ -13,7 +13,10 @@ billable resources (two ALBs, EC2, Image Builder).
 Env:
   OPENZI_E2E=1                enable
   OPENZI_ASSUME_ROLE_ARN      role in the test account to assume (from a management
-                              account, so a wedged round is still recoverable)
+                              account, so a wedged round is still recoverable). Leave
+                              UNSET to run against the ambient credentials' own
+                              account — needed when the target is that account
+                              itself, at the cost of the outside recovery path.
   OPENZI_DOMAIN               a domain the test account ALREADY OWNS (skip-domain
                               path — no purchase); its hosted zone gets cleaned
   OPENZI_SKIP_DOMAIN          default 1. Set to 0 to exercise the real registration
@@ -53,7 +56,7 @@ from openzi_itworker.setup import contacts  # noqa: E402
 
 import driver  # noqa: E402  (tests/e2e is on sys.path via conftest)
 
-ASSUME = os.environ["OPENZI_ASSUME_ROLE_ARN"]
+ASSUME = os.environ.get("OPENZI_ASSUME_ROLE_ARN")
 DOMAIN = os.environ["OPENZI_DOMAIN"]
 API_KEY = os.environ["OPENZI_API_KEY"]
 SKIP_DOMAIN = os.environ.get("OPENZI_SKIP_DOMAIN", "1") in ("1", "true", "True")
@@ -75,7 +78,14 @@ def log(*args):
 
 @pytest.fixture(scope="module")
 def session():
-    """Credentials for the test account, assumed from the management account."""
+    """Credentials for the test account, assumed from the management account — so a
+    round that wedges is still recoverable from outside it.
+
+    With OPENZI_ASSUME_ROLE_ARN unset the ambient credentials are used directly. That
+    is the only way to target the credentials' own account, and it gives up the
+    outside recovery path: the blast radius and the rescue key now live together."""
+    if not ASSUME:
+        return boto3.Session(region_name=driver.config.REGION)
     creds = boto3.client("sts").assume_role(
         RoleArn=ASSUME, RoleSessionName="openzi-itworker-e2e")["Credentials"]
     return boto3.Session(aws_access_key_id=creds["AccessKeyId"],
