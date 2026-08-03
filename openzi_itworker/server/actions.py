@@ -9,6 +9,8 @@ import base64
 import json
 import time
 
+from botocore.exceptions import ClientError
+
 from .. import config
 from ..context import Ctx
 from . import github, imagebuilder
@@ -204,18 +206,43 @@ def _delete_signin_lock(signin, account_id: str) -> None:
     """Restore console login: disable console-authorization enforcement, then delete
     every sign-in resource permission statement. We don't track a statement id —
     normally there is exactly one, but listing and deleting all is both correct and
-    idempotent. The signin model uses lowerCamelCase params (targetId / statementId)
-    — pinned by a Stubber test against the real service model."""
-    signin.delete_console_authorization_configuration(targetId=account_id)
+    idempotent.
+
+    ResourceNotFound is tolerated at each step: there is simply nothing to undo (an
+    account the lock was never applied to, or a re-run of recover). Every OTHER error
+    propagates — reporting "recovered" while the console is still sealed would be a
+    lie, and this is the one step whose failure locks the operator out for good.
+
+    The signin model uses lowerCamelCase params (targetId / statementId) — pinned by
+    a Stubber test against the real service model."""
+    _ignore_missing(signin.delete_console_authorization_configuration, targetId=account_id)
     token = None
     while True:
         kwargs = {"nextToken": token} if token else {}
-        resp = signin.list_resource_permission_statements(**kwargs)
+        try:
+            resp = signin.list_resource_permission_statements(**kwargs)
+        except ClientError as exc:
+            if _is_missing(exc):
+                return
+            raise
         for st in resp.get("permissionStatements", []):
-            _swallow(signin.delete_resource_permission_statement, statementId=st["sid"])
+            _ignore_missing(signin.delete_resource_permission_statement, statementId=st["sid"])
         token = resp.get("nextToken")
         if not token:
             return
+
+
+def _is_missing(exc: ClientError) -> bool:
+    return exc.response.get("Error", {}).get("Code") == "ResourceNotFoundException"
+
+
+def _ignore_missing(fn, **kwargs) -> None:
+    """Call fn, tolerating only 'it isn't there' — never a denial or a throttle."""
+    try:
+        fn(**kwargs)
+    except ClientError as exc:
+        if not _is_missing(exc):
+            raise
 
 
 # ---------- shared helpers ----------

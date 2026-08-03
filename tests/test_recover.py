@@ -1,5 +1,7 @@
 import json
 
+import pytest
+from botocore.exceptions import ClientError
 from fakes import FakeElb, FakeSsm, FakeCtx, platform
 
 from openzi_itworker.server import actions
@@ -27,6 +29,38 @@ def test_recover_signin_teardown_matches_the_real_model():
     with stub:
         actions._delete_signin_lock(signin, "123456789012")
     stub.assert_no_pending_responses()
+
+
+def _client_error(code, op):
+    return ClientError({"Error": {"Code": code, "Message": "x"}}, op)
+
+
+class _MissingSignin:
+    """An account the lock was never applied to — every call says it isn't there."""
+
+    def delete_console_authorization_configuration(self, targetId):
+        raise _client_error("ResourceNotFoundException", "DeleteConsoleAuthorizationConfiguration")
+
+    def list_resource_permission_statements(self, **kwargs):
+        raise _client_error("ResourceNotFoundException", "ListResourcePermissionStatements")
+
+
+def test_signin_teardown_tolerates_nothing_to_undo():
+    """recover must succeed on an account that was never locked (e.g. the itworker
+    e2e, which never applies the lockout), and on a re-run of recover."""
+    actions._delete_signin_lock(_MissingSignin(), "123456789012")
+
+
+class _DeniedSignin:
+    def delete_console_authorization_configuration(self, targetId):
+        raise _client_error("AccessDeniedException", "DeleteConsoleAuthorizationConfiguration")
+
+
+def test_signin_teardown_propagates_real_failures():
+    """A denial must NOT be swallowed: reporting 'recovered' while the console stays
+    sealed would lock the operator out for good."""
+    with pytest.raises(ClientError):
+        actions._delete_signin_lock(_DeniedSignin(), "123456789012")
 
 
 # ---------- instance-termination gate ----------

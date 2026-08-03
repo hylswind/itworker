@@ -60,7 +60,41 @@ and health on `:8081`, and receives `OPENZI_VERSION_SECRET` in its environment.
 
 ## Testing
 
-`pip install -r requirements-dev.txt && pytest` — offline unit tests (fakes / moto /
-botocore Stubber) + `cfn-lint` on the template. An opt-in, env-gated e2e in
-`tests/e2e/` plays the workflow's role from a management account (no root key, no
-console lock) so it can rerun freely.
+### Offline (the development loop)
+
+```
+pip install -r requirements-dev.txt && pytest
+```
+
+Fakes / moto / botocore Stubber, plus `cfn-lint` on the template. No AWS account, no
+network.
+
+### End-to-end (the acceptance run)
+
+`tests/e2e/` brings itworker up in a real account and drives the whole lifecycle:
+setup → control-plane health → init → deploy → the app is served → delete → recover.
+The driver plays the GitHub workflow's role *minus* the destructive half — it creates
+the admin role and launches the instance, but uses **no root key and never locks the
+console** — so the same test account can be reused indefinitely.
+
+```
+export OPENZI_E2E=1
+export OPENZI_ASSUME_ROLE_ARN=arn:aws:iam::<test-account>:role/<assumable-role>
+export OPENZI_DOMAIN=<a domain the test account already owns>
+export OPENZI_API_KEY=<any string; installed as the control-plane key>
+export OPENZI_ITWORKER_COMMIT=<pushed sha>          # default: main
+export OPENZI_APP_REPO=owner/app OPENZI_APP_COMMIT=<sha>   # optional: deploy phase
+pytest tests/e2e -s
+```
+
+Notes:
+
+- The instance **clones itworker from GitHub**, so it runs a *pushed* commit —
+  uncommitted local work is not what gets tested.
+- The domain is reused, not bought (`OPENZI_SKIP_DOMAIN=1` internally), so a round
+  costs no registration fee; it does create real billable infra (two ALBs, EC2,
+  Image Builder) for ~40-60 min.
+- Teardown always runs. `OPENZI_E2E_KEEP=1` leaves everything standing for
+  debugging; the domain and hosted zone are kept either way.
+- If setup wedges, nobody can SSH in — assume into the account and use **SSM Session
+  Manager** to read `journalctl` / `/var/log/cloud-init-output.log` on the instance.
