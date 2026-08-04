@@ -51,7 +51,8 @@ def init(ctx: Ctx, payload: dict) -> dict:
 
     priority = _alloc_priority(ctx)
     _create_info_rule(ctx, app, priority, record)
-    return {"app": app, "priority": priority}
+    return {"app": app, "priority": priority,
+            "info_url": f"https://{ctx.platform.domain}/{app}/info.json"}
 
 
 # ---------- deploy ----------
@@ -85,7 +86,9 @@ def deploy(ctx: Ctx, payload: dict) -> dict:
                 "recipe_arn": ami["recipe_arn"], "image_arn": ami["image_arn"],
                 "secret_role": secret_role}  # secret_param is derivable from app+commit
     ssm.put_parameter(Name=manifest_name, Value=json.dumps(manifest), Type="String", Overwrite=True)
-    return {"app": app, "commit": commit, "priority": priority}
+    # The caller shouldn't have to know the path convention to reach what it deployed.
+    return {"app": app, "commit": commit, "priority": priority,
+            "url": f"https://{ctx.platform.domain}/{app}/{commit}/"}
 
 
 # ---------- delete ----------

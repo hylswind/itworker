@@ -184,17 +184,19 @@ def test_app_lifecycle(platform):
     app = os.environ.get("OPENZP_APP_NAME", "e2e.dev")
 
     log(f"init {app} -> {APP_REPO}")
-    platform.run("init", {"app": app, "repo": APP_REPO}, ACTION_TIMEOUT)
+    info_url = platform.run("init", {"app": app, "repo": APP_REPO},
+                            ACTION_TIMEOUT)["result"]["info_url"]
     # init returns as soon as the ALB rule is CREATED; the rule needs a few more
     # seconds to reach every node, and until then the listener's default 404 answers.
-    body = driver.wait_for_200(f"https://{DOMAIN}/{app}/info.json", timeout=180, log=log)
+    body = driver.wait_for_200(info_url, timeout=180, log=log)
     assert APP_REPO.split("/")[-1] in body or "repo_id" in body
 
     for commit in APP_COMMITS:
         short = commit[:7]
         log(f"deploy {app}@{short} (Image Builder bake, ~10-15 min)")
-        platform.run("deploy", {"app": app, "commit": commit}, DEPLOY_TIMEOUT)
-        driver.wait_for_200(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
+        url = platform.run("deploy", {"app": app, "commit": commit},
+                           DEPLOY_TIMEOUT)["result"]["url"]
+        driver.wait_for_200(url, timeout=900, log=log)
 
     # Read every version only now, after the last deploy: an earlier version still
     # answering on its own path is what makes them concurrent rather than sequential.

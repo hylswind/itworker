@@ -45,11 +45,11 @@ KEY=<the control-plane key>
 # bind an app name to a repo — once; the binding is immutable
 openzp.sh $API $KEY init myapp.dev owner/myapp
 
-# build the version's AMI and route /myapp.dev/1a2b3c4/* to it
-openzp.sh $API $KEY deploy myapp.dev 1a2b3c4
+# build the version's AMI and route it — the path uses the sha's first 7 chars
+openzp.sh $API $KEY deploy myapp.dev 1a2b3c4d5e6f7890abcdef1234567890abcdef12
 
 # tear one version down; other versions and the app binding are untouched
-openzp.sh $API $KEY delete myapp.dev 1a2b3c4
+openzp.sh $API $KEY delete myapp.dev 1a2b3c4d5e6f7890abcdef1234567890abcdef12
 
 # the billing user's login (returns immediately — there is no job to poll)
 openzp.sh $API $KEY console-password
@@ -58,8 +58,8 @@ openzp.sh $API $KEY console-password
 openzp.sh $API $KEY recover
 ```
 
-After `init` the binding is published at `https://<domain>/myapp.dev/info.json`;
-after `deploy` the version is served at `https://<domain>/myapp.dev/1a2b3c4/`.
+`init` and `deploy` return the URL they published — `info_url` and `url` — and the
+client prints the result when the job succeeds.
 
 ## Architecture notes
 
