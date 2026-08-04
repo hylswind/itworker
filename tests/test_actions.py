@@ -17,9 +17,9 @@ def test_init_binds_and_publishes(monkeypatch):
     elb = FakeElb()
     ctx = FakeCtx({"ssm": ssm, "elbv2": elb}, platform())
     out = actions.init(ctx, {"app": "demo.dev", "repo": "o/r"})
-    assert out["priority"] == 1
-    # the caller gets a reachable url, not a path convention to reassemble
-    assert out["info_url"] == "https://example.com/demo.dev/info.json"
+    # a reachable url, and nothing the operator has no use for
+    assert out == {"info_url": "https://example.com/demo.dev/info.json"}
+    assert elb.created[0]["Priority"] == 1
     record = json.loads(ssm.params["/openzp/apps/demo.dev"])
     assert record["repo_id"] == 42 and record["owner_id"] == 7
     body = elb.created[0]["Actions"][0]["FixedResponseConfig"]["MessageBody"]
@@ -45,8 +45,8 @@ def test_init_resumes_partial(monkeypatch):
     ssm = FakeSsm({"/openzp/apps/demo.dev": existing, config.PRIORITY_COUNTER: "3"})
     elb = FakeElb(rules=[])
     ctx = FakeCtx({"ssm": ssm, "elbv2": elb}, platform())
-    out = actions.init(ctx, {"app": "demo.dev", "repo": "o/r"})
-    assert out["priority"] == 4 and elb.created
+    actions.init(ctx, {"app": "demo.dev", "repo": "o/r"})
+    assert elb.created and elb.created[0]["Priority"] == 4
 
 
 # ---------- deploy / delete guards ----------
