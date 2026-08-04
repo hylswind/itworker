@@ -154,6 +154,12 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     # version manifests — a full reset, so a re-init/re-deploy after recover starts
     # clean instead of hitting AppExists/AlreadyDeployed against phantom records.
     ssm, iam = ctx.client("ssm"), ctx.client("iam")
+
+    # Do this while the manifests still exist. The bake artifacts are named with a
+    # random token, so no prefix sweep can find them — the manifest is the only record
+    # of their arns, and it is deleted just below.
+    _delete_bake_artifacts(ctx, ssm)
+
     names = [prm["Name"]
              for prefix in (config.SECRET_PREFIX, config.VERSION_PREFIX, config.APP_PREFIX)
              for page in ssm.get_paginator("get_parameters_by_path").paginate(Path=prefix, Recursive=True)
@@ -173,6 +179,29 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     _wait_instances_terminated(ec2, app_instance_ids)
     _delete_signin_lock(ctx.client("signin"), p.account_id)
     return {"recovered": True}
+
+
+def _delete_bake_artifacts(ctx: Ctx, ssm) -> None:
+    """Drop what each version manifest records from its bake: the AMI (with its
+    snapshots, which bill for as long as they exist) and the Image Builder image,
+    recipe and component. Same work `delete` does per version, in the same dependency
+    order — the image is built from the recipe, the recipe references the component."""
+    ib = ctx.client("imagebuilder")
+    for page in ssm.get_paginator("get_parameters_by_path").paginate(
+            Path=config.VERSION_PREFIX, Recursive=True):
+        for prm in page.get("Parameters", []):
+            try:
+                m = json.loads(prm.get("Value") or "")
+            except ValueError:
+                continue  # not a manifest we wrote; nothing to act on
+            if m.get("ami"):
+                _delete_ami(ctx, m["ami"])
+            if m.get("image_arn"):
+                _swallow(ib.delete_image, imageBuildVersionArn=m["image_arn"])
+            if m.get("recipe_arn"):
+                _swallow(ib.delete_image_recipe, imageRecipeArn=m["recipe_arn"])
+            if m.get("component_arn"):
+                _swallow(ib.delete_component, componentBuildVersionArn=m["component_arn"])
 
 
 # App instances launch untagged (ASG tags aren't propagated), so we track them by
