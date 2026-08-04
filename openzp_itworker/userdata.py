@@ -3,8 +3,8 @@
 
 It clones this repo at the workflow-pinned commit (both baked in literally, and
 also readable from SSM) and boots straight into server mode. The first instance is
-launched by the workflow with a different, setup-mode user-data (built in the
-openzp-workflow package); both converge on the same server process."""
+launched by the workflow with a different, setup-mode user-data (built on the
+workflow side); both converge on the same server process."""
 
 from __future__ import annotations
 

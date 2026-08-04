@@ -31,8 +31,8 @@ _EC2_TRUST = json.dumps({
 # The instance clones itworker from GitHub, so the e2e exercises a PUSHED commit —
 # uncommitted local work is not what runs.
 #
-# Kept deliberately identical to openzp_workflow.userdata._SETUP_TEMPLATE, down to
-# the shell quoting: the point of this driver is that itworker sees exactly what the
+# Kept deliberately identical to the workflow's own setup user-data, down to the
+# shell quoting: the point of this driver is that itworker sees exactly what the
 # workflow would hand it. If the two drift, the e2e stops testing the real thing.
 _SETUP_USERDATA = r"""#!/bin/bash
 set -euxo pipefail
