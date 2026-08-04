@@ -48,9 +48,8 @@ class FakeAsg:
         self.attached = (InstanceIds, AutoScalingGroupName)
         self._set(self.min, self.max, self.desired + len(InstanceIds))
 
-    def update_auto_scaling_group(self, AutoScalingGroupName, **kwargs):
-        self._set(kwargs.get("MinSize", self.min), kwargs.get("MaxSize", self.max),
-                  kwargs.get("DesiredCapacity", self.desired))
+    def update_auto_scaling_group(self, AutoScalingGroupName, MinSize):
+        self._set(MinSize, self.max, self.desired)
 
     def _set(self, min_size, max_size, desired):
         if not min_size <= desired <= max_size:

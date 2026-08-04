@@ -54,7 +54,7 @@ import boto3  # noqa: E402
 
 from openzp_itworker.setup import contacts  # noqa: E402
 
-import driver  # noqa: E402  (tests/e2e is on sys.path via conftest)
+import driver  # noqa: E402  (tests/e2e is on sys.path via pytest.ini)
 
 ASSUME = os.environ.get("OPENZP_ASSUME_ROLE_ARN")
 DOMAIN = os.environ["OPENZP_DOMAIN"]
@@ -99,10 +99,13 @@ def platform(session):
     """Bring itworker up, yield a control-plane client, then always tear down."""
     ec2, ssm, iam = session.client("ec2"), session.client("ssm"), session.client("iam")
     if not SKIP_DOMAIN:
-        # Checked here, not on the instance: a contact rejected mid-setup would have
-        # already cost a launch, and a half-registered domain is not refundable.
-        missing = [k for k in contacts.REQUIRED if not CONTACT.get(k)]
-        assert not missing, f"OPENZP_SKIP_DOMAIN=0 buys {DOMAIN}; contact is missing {missing}"
+        # Run the instance's own validator here, before the launch: a contact rejected
+        # mid-setup has already cost an instance, and a domain purchase does not come
+        # back. Calling it rather than re-checking its fields keeps the two in step.
+        try:
+            contacts.build_contact(CONTACT)
+        except contacts.ContactError as exc:
+            raise AssertionError(f"OPENZP_SKIP_DOMAIN=0 buys {DOMAIN}: {exc}") from None
         log(f"buying {DOMAIN} — the registration path, not the reuse path")
     try:
         log("phase 1: create the admin role (the workflow's step 1)")
@@ -143,9 +146,8 @@ def test_control_plane_requires_the_api_key(platform):
 
 
 def test_console_password_is_served_behind_the_key(platform):
-    """The billing login is the one credential meant to outlive the account lockout,
-    and the control plane is the only place left to read it from — so check it against
-    a real one, and check the gate in front of it."""
+    """Checked against a real control plane, gate included — this route hands out a
+    credential, so the key mattering here matters more than anywhere else."""
     status, _ = driver.fetch(f"https://admin.{DOMAIN}/console-password")
     assert status == 403, f"the billing login answered without a key: {status}"
 
@@ -180,7 +182,6 @@ def test_app_lifecycle(platform):
     claim: the same app, at the same instant, hands each version a different
     OPENZP_VERSION_SECRET, so one version cannot read another's."""
     app = os.environ.get("OPENZP_APP_NAME", "e2e.dev")
-    shorts = [c[:7] for c in APP_COMMITS]
 
     log(f"init {app} -> {APP_REPO}")
     platform.run("init", {"app": app, "repo": APP_REPO}, ACTION_TIMEOUT)
@@ -189,20 +190,22 @@ def test_app_lifecycle(platform):
     body = driver.wait_for_200(f"https://{DOMAIN}/{app}/info.json", timeout=180, log=log)
     assert APP_REPO.split("/")[-1] in body or "repo_id" in body
 
-    for commit, short in zip(APP_COMMITS, shorts):
+    for commit in APP_COMMITS:
+        short = commit[:7]
         log(f"deploy {app}@{short} (Image Builder bake, ~10-15 min)")
         platform.run("deploy", {"app": app, "commit": commit}, DEPLOY_TIMEOUT)
         driver.wait_for_200(f"https://{DOMAIN}/{app}/{short}/", timeout=900, log=log)
 
     # Read every version only now, after the last deploy: an earlier version still
     # answering on its own path is what makes them concurrent rather than sequential.
-    hashes = {short: _served_secret_hash(f"https://{DOMAIN}/{app}/{short}/") for short in shorts}
+    hashes = {c[:7]: _served_secret_hash(f"https://{DOMAIN}/{app}/{c[:7]}/") for c in APP_COMMITS}
     for short, digest in hashes.items():
         log(f"  {short} version-secret sha256 {digest}")
     assert len(set(hashes.values())) == len(hashes), \
         f"versions share a secret — per-version isolation is broken: {hashes}"
 
-    for commit, short in zip(APP_COMMITS, shorts):
+    for commit in APP_COMMITS:
+        short = commit[:7]
         log(f"delete {app}@{short}")
         platform.run("delete", {"app": app, "commit": commit}, ACTION_TIMEOUT)
 

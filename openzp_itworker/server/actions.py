@@ -99,18 +99,14 @@ def delete(ctx: Ctx, payload: dict) -> dict:
     except ssm.exceptions.ParameterNotFound:
         raise ActionError("VersionNotFound: never deployed, or already deleted") from None
 
-    elb, asg, ec2, ib = (ctx.client("elbv2"), ctx.client("autoscaling"),
-                         ctx.client("ec2"), ctx.client("imagebuilder"))
+    elb, asg, ec2 = ctx.client("elbv2"), ctx.client("autoscaling"), ctx.client("ec2")
     # each step tolerates already-gone resources so re-runs converge.
     _swallow(elb.delete_rule, RuleArn=m["rule_arn"])
     _swallow(asg.delete_auto_scaling_group, AutoScalingGroupName=m["asg_name"], ForceDelete=True)
     time.sleep(60)  # let the ASG release the TG before deleting it
     _swallow(elb.delete_target_group, TargetGroupArn=m["tg_arn"])
     _swallow(ec2.delete_launch_template, LaunchTemplateId=m["lt_id"])
-    _delete_ami(ctx, m["ami"])
-    _swallow(ib.delete_image, imageBuildVersionArn=m["image_arn"])
-    _swallow(ib.delete_image_recipe, imageRecipeArn=m["recipe_arn"])
-    _swallow(ib.delete_component, componentBuildVersionArn=m["component_arn"])
+    _delete_bake_output(ctx, m)
     _swallow(ssm.delete_parameter, Name=config.SECRET_PARAM.format(app=app, commit=commit))
     _delete_version_role(ctx, m["secret_role"])
     _swallow(ssm.delete_parameter, Name=manifest_name)
@@ -155,15 +151,19 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     # clean instead of hitting AppExists/AlreadyDeployed against phantom records.
     ssm, iam = ctx.client("ssm"), ctx.client("iam")
 
-    # Do this while the manifests still exist. The bake artifacts are named with a
-    # random token, so no prefix sweep can find them — the manifest is the only record
-    # of their arns, and it is deleted just below.
-    _delete_bake_artifacts(ctx, ssm)
+    # Every other resource below is swept by name prefix, but the bake output is keyed
+    # off the manifest instead: its Image Builder names end in a random token, so a
+    # sweep would have to list and match rather than delete by known arn. The manifest
+    # already holds the arns — but it is deleted just below, so read it first. The gap
+    # this leaves is a deploy that died before writing its manifest (deploy writes it
+    # last); that version's AMI and bake objects are orphaned from both paths.
+    version_names = _delete_bake_output_from_manifests(ctx, ssm)
 
-    names = [prm["Name"]
-             for prefix in (config.SECRET_PREFIX, config.VERSION_PREFIX, config.APP_PREFIX)
-             for page in ssm.get_paginator("get_parameters_by_path").paginate(Path=prefix, Recursive=True)
-             for prm in page.get("Parameters", [])]
+    names = version_names + [
+        prm["Name"]
+        for prefix in (config.SECRET_PREFIX, config.APP_PREFIX)
+        for page in ssm.get_paginator("get_parameters_by_path").paginate(Path=prefix, Recursive=True)
+        for prm in page.get("Parameters", [])]
     for i in range(0, len(names), 10):  # DeleteParameters takes up to 10 names
         _swallow(ssm.delete_parameters, Names=names[i:i + 10])
     for page in iam.get_paginator("list_roles").paginate():
@@ -181,27 +181,36 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     return {"recovered": True}
 
 
-def _delete_bake_artifacts(ctx: Ctx, ssm) -> None:
-    """Drop what each version manifest records from its bake: the AMI (with its
-    snapshots, which bill for as long as they exist) and the Image Builder image,
-    recipe and component. Same work `delete` does per version, in the same dependency
-    order — the image is built from the recipe, the recipe references the component."""
+def _delete_bake_output(ctx: Ctx, manifest: dict) -> None:
+    """Drop what one deploy's bake produced: the AMI (with its snapshots, which bill
+    for as long as they exist) and the Image Builder image, recipe and component.
+    Deleted in dependency order — the image is built from the recipe, the recipe
+    references the component."""
     ib = ctx.client("imagebuilder")
+    if manifest.get("ami"):
+        _delete_ami(ctx, manifest["ami"])
+    if manifest.get("image_arn"):
+        _swallow(ib.delete_image, imageBuildVersionArn=manifest["image_arn"])
+    if manifest.get("recipe_arn"):
+        _swallow(ib.delete_image_recipe, imageRecipeArn=manifest["recipe_arn"])
+    if manifest.get("component_arn"):
+        _swallow(ib.delete_component, componentBuildVersionArn=manifest["component_arn"])
+
+
+def _delete_bake_output_from_manifests(ctx: Ctx, ssm) -> list[str]:
+    """Clear every version's bake output, returning the manifest parameter names so
+    the caller can delete them without walking the path a second time."""
+    names = []
     for page in ssm.get_paginator("get_parameters_by_path").paginate(
             Path=config.VERSION_PREFIX, Recursive=True):
         for prm in page.get("Parameters", []):
+            names.append(prm["Name"])
             try:
-                m = json.loads(prm.get("Value") or "")
+                manifest = json.loads(prm.get("Value") or "")
             except ValueError:
-                continue  # not a manifest we wrote; nothing to act on
-            if m.get("ami"):
-                _delete_ami(ctx, m["ami"])
-            if m.get("image_arn"):
-                _swallow(ib.delete_image, imageBuildVersionArn=m["image_arn"])
-            if m.get("recipe_arn"):
-                _swallow(ib.delete_image_recipe, imageRecipeArn=m["recipe_arn"])
-            if m.get("component_arn"):
-                _swallow(ib.delete_component, componentBuildVersionArn=m["component_arn"])
+                continue  # unreadable manifest: still delete it, just nothing to act on
+            _delete_bake_output(ctx, manifest)
+    return names
 
 
 # App instances launch untagged (ASG tags aren't propagated), so we track them by

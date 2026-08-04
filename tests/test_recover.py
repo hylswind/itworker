@@ -196,7 +196,7 @@ def _recover_ctx(monkeypatch, groups, instance_states, ec2=None):
 
 class _RecoverEc2(_FakeEc2Instances):
     def __init__(self, states):
-        super().__init__(states or {})
+        super().__init__(states)
         self.deregistered, self.snapshots_deleted = [], []
 
     def describe_images(self, ImageIds):

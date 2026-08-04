@@ -76,16 +76,14 @@ def _shquote(value: str) -> str:
 
 
 def build_setup_userdata(*, repo: str, commit: str, region: str, domain: str,
-                         end_epoch: int, api_key: str, skip_domain: bool = True,
-                         contact: dict | None = None) -> str:
-    """Mirror of the workflow's setup user-data. skip_domain defaults to True — a
-    reused domain costs nothing per round — but passing False exercises the real
-    RegisterDomain path, which BUYS the domain (~$3, non-refundable) and needs a
-    contact carrying every field in contacts.REQUIRED."""
+                         end_epoch: int, api_key: str, skip_domain: bool,
+                         contact: dict) -> str:
+    """Mirror of the workflow's setup user-data. skip_domain False exercises the real
+    RegisterDomain path, which BUYS the domain (~$3, non-refundable)."""
     return _SETUP_USERDATA.format(
         repo=repo, commit=commit, region=region, domain=domain, end_epoch=end_epoch,
         api_key=_shquote(api_key), skip_domain="1" if skip_domain else "0",
-        contact_shell=_shquote(json.dumps(contact or {})))
+        contact_shell=_shquote(json.dumps(contact)))
 
 
 def launch(ec2, ssm, user_data: str, profile_name: str, log=print) -> str:
@@ -285,10 +283,13 @@ def _wait_terminated(ec2, ids, log, timeout=600) -> None:
     it, which reads correctly as 'gone'."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        try:
+            resp = ec2.describe_instances(Filters=[{"Name": "instance-id", "Values": ids}])
+        except Exception:  # noqa: BLE001 — a throttle here must not abort the teardown
+            time.sleep(15)
+            continue
         states = {i["State"]["Name"]
-                  for r in ec2.describe_instances(
-                      Filters=[{"Name": "instance-id", "Values": ids}]).get("Reservations", [])
-                  for i in r.get("Instances", [])}
+                  for r in resp.get("Reservations", []) for i in r.get("Instances", [])}
         if states <= {"terminated"}:
             return
         time.sleep(15)

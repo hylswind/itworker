@@ -2,8 +2,7 @@
 ALB (admin.{domain} -> control TG -> this instance :8080), so every route except
 the ALB health check requires the bearer key in the `x-api-key` header. Each write
 action runs in a background thread with its status in SSM; the client polls
-GET /status?id=. GET /console-password returns the billing user's login — the only
-way to reach it once the account has no root key and no console.
+GET /status?id=. GET /console-password returns the billing user's login.
 
 On startup it loads the API key from SSM (SecureString) and sweeps /openzp/jobs/*:
 orphaned RUNNING jobs (workers killed by the daily restart) become FAILED, and
