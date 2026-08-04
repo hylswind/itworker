@@ -157,6 +157,10 @@ class ControlClient:
                 raise TimeoutError(f"control plane never became healthy: {last}")
             time.sleep(interval)
 
+    def get(self, path: str) -> dict:
+        """A read-only route: no job to poll, the answer comes straight back."""
+        return self._request("GET", path)
+
     def run(self, action: str, body: dict, timeout: float, interval: float = 20) -> dict:
         """Submit an action and poll its job to a terminal state."""
         job = self._request("POST", f"/{action}", body)["job"]

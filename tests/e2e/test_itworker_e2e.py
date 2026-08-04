@@ -142,6 +142,20 @@ def test_control_plane_requires_the_api_key(platform):
     assert status == 403
 
 
+def test_console_password_is_served_behind_the_key(platform):
+    """The billing login is the one credential meant to outlive the account lockout,
+    and the control plane is the only place left to read it from — so check it against
+    a real one, and check the gate in front of it."""
+    status, _ = driver.fetch(f"https://admin.{DOMAIN}/console-password")
+    assert status == 403, f"the billing login answered without a key: {status}"
+
+    doc = platform.get("/console-password")
+    assert doc["user"] == driver.config.BILLING_CONSOLE_USER
+    assert doc["password"], "no password stored — setup never generated one"
+    assert doc["signin_url"].endswith(".signin.aws.amazon.com/console")
+    log(f"  console login for {doc['user']} retrieved ({len(doc['password'])} chars)")
+
+
 _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
 
 
