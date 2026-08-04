@@ -2,7 +2,8 @@
 ALB (admin.{domain} -> control TG -> this instance :8080), so every route except
 the ALB health check requires the bearer key in the `x-api-key` header. Each write
 action runs in a background thread with its status in SSM; the client polls
-GET /status?id=.
+GET /status?id=. GET /console-password returns the billing user's login — the only
+way to reach it once the account has no root key and no console.
 
 On startup it loads the API key from SSM (SecureString) and sweeps /openzi/jobs/*:
 orphaned RUNNING jobs (workers killed by the daily restart) become FAILED, and
@@ -63,7 +64,29 @@ class Handler(BaseHTTPRequestHandler):
             if doc is None:
                 return self._json(404, {"error": "unknown job"})
             return self._json(200, {"status": doc["status"], **doc})
+        if parsed.path == "/console-password":
+            return self._console_password()
         return self._json(404, {"error": "not found"})
+
+    def _console_password(self):
+        """Hand back the billing user's login, which is otherwise unreachable.
+
+        Once the workflow has deleted the root key and sealed console sign-in, the
+        operator holds exactly one credential: this API key. The billing user is
+        deliberately exempt from the lockout so bills can still be paid — but its
+        password lives in an SSM SecureString, and reading SSM needs the AWS access
+        the operator no longer has. Without this route the only way back in is
+        `recover`, which razes the platform to restore root login."""
+        try:
+            password = self.ssm.get_parameter(
+                Name=config.CONSOLE_PASSWORD_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        except self.ssm.exceptions.ParameterNotFound:
+            return self._json(404, {"error": "no console password stored"})
+        return self._json(200, {
+            "user": config.BILLING_CONSOLE_USER,
+            "password": password,
+            "signin_url": f"https://{self.platform.account_id}.signin.aws.amazon.com/console",
+        })
 
     def do_POST(self):  # noqa: N802
         if not self._authed():

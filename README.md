@@ -31,6 +31,11 @@ health check requires the bearer key in `x-api-key`, compared against the Secure
 at `/openzi/api-key`. `recover` tears the platform down and deletes the sign-in
 lockout (listing and removing all statements) to restore console login.
 
+`GET /console-password` returns the billing user's login. It has to live here: once
+the workflow has deleted the root key and sealed the console, the API key is the
+operator's only credential, so a password sitting in SSM is unreachable — and the
+sole alternative would be `recover`, which razes the platform to read a bill.
+
 Deploy client: `deploy_client/openzi.sh https://admin.<domain> <API_KEY> <action> …`.
 
 ## Architecture notes
