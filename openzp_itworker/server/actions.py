@@ -121,7 +121,7 @@ def delete(ctx: Ctx, payload: dict) -> dict:
 
 def recover(ctx: Ctx, payload: dict) -> dict:
     """Full reset: wipe every app (rules/ASGs/TGs/LTs by name wildcard + the
-    /openzi/{secrets,versions,apps} SSM records) -> ACM recover.{domain} CT-log
+    /openzp/{secrets,versions,apps} SSM records) -> ACM recover.{domain} CT-log
     proof -> WAIT for the app instances to actually terminate -> delete the AWS
     Sign-In lockout, restoring root login. The wait is a security gate: a running
     instance still holds its version secret in memory."""
@@ -132,7 +132,7 @@ def recover(ctx: Ctx, payload: dict) -> dict:
         if not rule["IsDefault"]:
             _swallow(elb.delete_rule, RuleArn=rule["RuleArn"])
     # Capture each app ASG's instance ids as we delete it: ForceDelete only INITIATES
-    # termination (async), and those instances still hold their OPENZI_VERSION_SECRET
+    # termination (async), and those instances still hold their OPENZP_VERSION_SECRET
     # in the running container's memory. We must confirm they are gone before
     # restoring console login (below).
     app_instance_ids: list[str] = []
@@ -420,7 +420,7 @@ def _bake_component_data(repo_id: int, owner_id: int, app: str, commit: str) -> 
     """The bake script — github-id clone + owner verify, docker build at bake time,
     platform-dictated `docker run`. app.service reads this version's 64-byte secret
     from SSM (the host's per-version role decrypts it) and injects it into the
-    container as OPENZI_VERSION_SECRET; the container itself is IMDS-blocked."""
+    container as OPENZP_VERSION_SECRET; the container itself is IMDS-blocked."""
     return _COMPONENT_TEMPLATE.format(
         repo_id=repo_id, owner_id=owner_id, commit=commit,
         secret_param=config.SECRET_PARAM.format(app=app, commit=commit))
@@ -456,7 +456,7 @@ phases:
               Type=simple
               Restart=always
               RestartSec=5
-              ExecStart=/bin/bash -c 'S=$(aws ssm get-parameter --name "{secret_param}" --with-decryption --query Parameter.Value --output text); exec docker run --rm --name app -p 80:8080 -p 8081:8081 -e OPENZI_VERSION_SECRET="$S" app:{commit}'
+              ExecStart=/bin/bash -c 'S=$(aws ssm get-parameter --name "{secret_param}" --with-decryption --query Parameter.Value --output text); exec docker run --rm --name app -p 80:8080 -p 8081:8081 -e OPENZP_VERSION_SECRET="$S" app:{commit}'
               [Install]
               WantedBy=multi-user.target
               UNIT
@@ -486,7 +486,7 @@ def _ct_log_proof(ctx: Ctx) -> None:
     p = ctx.platform
     cert_arn = acm.request_certificate(
         DomainName=f"recover.{p.domain}", ValidationMethod="DNS",
-        IdempotencyToken="openzirecover")["CertificateArn"]
+        IdempotencyToken="openzprecover")["CertificateArn"]
 
     record = None
     for _ in range(30):

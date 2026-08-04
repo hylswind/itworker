@@ -5,7 +5,7 @@ action runs in a background thread with its status in SSM; the client polls
 GET /status?id=. GET /console-password returns the billing user's login — the only
 way to reach it once the account has no root key and no console.
 
-On startup it loads the API key from SSM (SecureString) and sweeps /openzi/jobs/*:
+On startup it loads the API key from SSM (SecureString) and sweeps /openzp/jobs/*:
 orphaned RUNNING jobs (workers killed by the daily restart) become FAILED, and
 terminal records past their TTL are pruned."""
 

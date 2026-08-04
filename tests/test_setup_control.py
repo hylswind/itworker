@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
-from openzi_itworker import config
-from openzi_itworker.setup import control
+from openzp_itworker import config
+from openzp_itworker.setup import control
 
 
 @dataclass
 class _Cfg:
-    repo: str = "owner/openzi-itworker"
+    repo: str = "owner/openzp-itworker"
     commit: str = "abc1234"
     region: str = "us-east-1"
 
@@ -74,7 +74,7 @@ def test_wire_control_attaches_sg_lt_asg_and_instance():
     assert lt["SecurityGroupIds"] == ["sg-ctrl"]
     import base64
     ud = base64.b64decode(lt["UserData"]).decode()
-    assert "git checkout abc1234" in ud and "openzi_itworker server" in ud
+    assert "git checkout abc1234" in ud and "openzp_itworker server" in ud
 
     assert asg.created["AutoScalingGroupName"] == config.CONTROL_ASG_NAME
     assert asg.created["TargetGroupARNs"] == ["arn:tg/ctrl"]

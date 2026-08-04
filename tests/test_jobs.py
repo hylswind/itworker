@@ -2,8 +2,8 @@ import json
 
 from fakes import FakeSsm
 
-from openzi_itworker import config
-from openzi_itworker.server import jobs
+from openzp_itworker import config
+from openzp_itworker.server import jobs
 
 
 def test_job_lifecycle():

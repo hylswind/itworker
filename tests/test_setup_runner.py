@@ -5,9 +5,9 @@ re-raising."""
 import pytest
 from fakes import FakeSsm
 
-from openzi_itworker import config
-from openzi_itworker.setup import runner
-from openzi_itworker.setup.config import SetupConfig
+from openzp_itworker import config
+from openzp_itworker.setup import runner
+from openzp_itworker.setup.config import SetupConfig
 
 
 def _cfg():

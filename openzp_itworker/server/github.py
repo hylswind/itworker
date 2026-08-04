@@ -24,7 +24,7 @@ def resolve(repo: str) -> dict:
 
 def _get(url: str) -> dict:
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
-                                               "User-Agent": "openzi-control-plane"})
+                                               "User-Agent": "openzp-control-plane"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())

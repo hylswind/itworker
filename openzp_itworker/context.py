@@ -1,7 +1,7 @@
 """Runtime context for the control-plane server: boto3 clients + the platform
 facts the actions need (VPC, subnets, the app ALB listener, Image Builder config
 arns, domain, hosted zone). CloudFormation writes these once to
-/openzi/platform-config; the server loads them at startup so this code stays
+/openzp/platform-config; the server loads them at startup so this code stays
 account-agnostic."""
 
 from __future__ import annotations

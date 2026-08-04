@@ -19,9 +19,9 @@ import urllib.request
 
 from botocore.exceptions import ClientError
 
-from openzi_itworker import config
+from openzp_itworker import config
 
-E2E_INSTANCE_TAG = "openzi-itworker-e2e"
+E2E_INSTANCE_TAG = "openzp-itworker-e2e"
 
 _EC2_TRUST = json.dumps({
     "Version": "2012-10-17",
@@ -31,27 +31,27 @@ _EC2_TRUST = json.dumps({
 # The instance clones itworker from GitHub, so the e2e exercises a PUSHED commit —
 # uncommitted local work is not what runs.
 #
-# Kept deliberately identical to openzi_workflow.userdata._SETUP_TEMPLATE, down to
+# Kept deliberately identical to openzp_workflow.userdata._SETUP_TEMPLATE, down to
 # the shell quoting: the point of this driver is that itworker sees exactly what the
 # workflow would hand it. If the two drift, the e2e stops testing the real thing.
 _SETUP_USERDATA = r"""#!/bin/bash
 set -euxo pipefail
 dnf install -y git python3.11 python3.11-pip
 python3.11 -m pip install boto3
-rm -rf /opt/openzi-itworker
-git clone https://github.com/{repo}.git /opt/openzi-itworker
-cd /opt/openzi-itworker
+rm -rf /opt/openzp-itworker
+git clone https://github.com/{repo}.git /opt/openzp-itworker
+cd /opt/openzp-itworker
 git checkout {commit}
 export AWS_DEFAULT_REGION={region}
-export OPENZI_DOMAIN={domain}
-export OPENZI_END={end_epoch}
-export OPENZI_API_KEY={api_key}
-export OPENZI_REPO={repo}
-export OPENZI_COMMIT={commit}
-export OPENZI_REGION={region}
-export OPENZI_SKIP_DOMAIN={skip_domain}
-export OPENZI_CONTACT={contact_shell}
-exec python3.11 -m openzi_itworker setup
+export OPENZP_DOMAIN={domain}
+export OPENZP_END={end_epoch}
+export OPENZP_API_KEY={api_key}
+export OPENZP_REPO={repo}
+export OPENZP_COMMIT={commit}
+export OPENZP_REGION={region}
+export OPENZP_SKIP_DOMAIN={skip_domain}
+export OPENZP_CONTACT={contact_shell}
+exec python3.11 -m openzp_itworker setup
 """
 
 
@@ -137,7 +137,7 @@ def await_marker(ssm, timeout: float, interval: float = 30, log=print) -> tuple[
 # ---------- 2. the control-plane API ----------
 
 class ControlClient:
-    """Talks to https://admin.{domain} the way deploy_client/openzi.sh does."""
+    """Talks to https://admin.{domain} the way deploy_client/openzp.sh does."""
 
     def __init__(self, base: str, api_key: str, log=print):
         self.base = base.rstrip("/")
@@ -269,10 +269,10 @@ def cleanup(session, log=print) -> None:
              PolicyArn="arn:aws:iam::aws:policy/AdministratorAccess")
     _swallow(iam.delete_role, RoleName=config.ADMIN_PROFILE_NAME)
 
-    log("  wiping /openzi/ SSM parameters")
+    log("  wiping /openzp/ SSM parameters")
     names = [p["Name"]
              for page in ssm.get_paginator("describe_parameters").paginate(
-                 ParameterFilters=[{"Key": "Path", "Option": "Recursive", "Values": ["/openzi"]}])
+                 ParameterFilters=[{"Key": "Path", "Option": "Recursive", "Values": ["/openzp"]}])
              for p in page.get("Parameters", [])]
     for i in range(0, len(names), 10):
         _swallow(ssm.delete_parameters, Names=names[i:i + 10])

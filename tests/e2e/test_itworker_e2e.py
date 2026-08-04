@@ -5,36 +5,36 @@ The driver plays the GitHub workflow's role, minus the destructive half: it crea
 the admin role and launches the instance, but uses NO root key and never locks the
 console. So this can rerun against the same test account indefinitely, which makes
 it the main iteration tool for itworker. (The workflow's own e2e, in the
-openzi-workflow repo, covers the destructive path.)
+openzp-workflow repo, covers the destructive path.)
 
-Opt-in; skipped unless OPENZI_E2E=1. One round takes ~40-60 min and creates real,
+Opt-in; skipped unless OPENZP_E2E=1. One round takes ~40-60 min and creates real,
 billable resources (two ALBs, EC2, Image Builder).
 
 Env:
-  OPENZI_E2E=1                enable
-  OPENZI_ASSUME_ROLE_ARN      role in the test account to assume (from a management
+  OPENZP_E2E=1                enable
+  OPENZP_ASSUME_ROLE_ARN      role in the test account to assume (from a management
                               account, so a wedged round is still recoverable). Leave
                               UNSET to run against the ambient credentials' own
                               account — needed when the target is that account
                               itself, at the cost of the outside recovery path.
-  OPENZI_DOMAIN               a domain the test account ALREADY OWNS (skip-domain
+  OPENZP_DOMAIN               a domain the test account ALREADY OWNS (skip-domain
                               path — no purchase); its hosted zone gets cleaned
-  OPENZI_SKIP_DOMAIN          default 1. Set to 0 to exercise the real registration
-                              path instead — that BUYS OPENZI_DOMAIN (~$3, not
+  OPENZP_SKIP_DOMAIN          default 1. Set to 0 to exercise the real registration
+                              path instead — that BUYS OPENZP_DOMAIN (~$3, not
                               refundable, and teardown keeps it), so the domain must
                               be one the account does NOT own yet.
-  OPENZI_CONTACT              registration contact JSON; required when
-                              OPENZI_SKIP_DOMAIN=0, unused otherwise
-  OPENZI_API_KEY              control-plane bearer key to install and use
-  OPENZI_ITWORKER_REPO        owner/name to clone      (default hylswind/itworker)
-  OPENZI_ITWORKER_COMMIT      commit/ref to check out  (default main)
+  OPENZP_CONTACT              registration contact JSON; required when
+                              OPENZP_SKIP_DOMAIN=0, unused otherwise
+  OPENZP_API_KEY              control-plane bearer key to install and use
+  OPENZP_ITWORKER_REPO        owner/name to clone      (default hylswind/itworker)
+  OPENZP_ITWORKER_COMMIT      commit/ref to check out  (default main)
                               NOTE: the instance clones from GitHub, so this must be
                               PUSHED — local uncommitted work is not what runs.
-  OPENZI_APP_REPO             owner/name of an app with a Dockerfile (optional; the
-  OPENZI_APP_COMMIT           deploy phase is skipped when either is unset). Accepts
+  OPENZP_APP_REPO             owner/name of an app with a Dockerfile (optional; the
+  OPENZP_APP_COMMIT           deploy phase is skipped when either is unset). Accepts
                               a comma-separated list — two or more versions is what
                               proves per-version secret isolation.
-  OPENZI_E2E_KEEP=1           leave everything standing for debugging (no teardown)
+  OPENZP_E2E_KEEP=1           leave everything standing for debugging (no teardown)
 """
 
 import json
@@ -47,29 +47,29 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-if os.environ.get("OPENZI_E2E") != "1":
-    pytest.skip("set OPENZI_E2E=1 to run the itworker e2e", allow_module_level=True)
+if os.environ.get("OPENZP_E2E") != "1":
+    pytest.skip("set OPENZP_E2E=1 to run the itworker e2e", allow_module_level=True)
 
 import boto3  # noqa: E402
 
-from openzi_itworker.setup import contacts  # noqa: E402
+from openzp_itworker.setup import contacts  # noqa: E402
 
 import driver  # noqa: E402  (tests/e2e is on sys.path via conftest)
 
-ASSUME = os.environ.get("OPENZI_ASSUME_ROLE_ARN")
-DOMAIN = os.environ["OPENZI_DOMAIN"]
-API_KEY = os.environ["OPENZI_API_KEY"]
-SKIP_DOMAIN = os.environ.get("OPENZI_SKIP_DOMAIN", "1") in ("1", "true", "True")
-CONTACT = json.loads(os.environ.get("OPENZI_CONTACT") or "{}")
-ITWORKER_REPO = os.environ.get("OPENZI_ITWORKER_REPO", "hylswind/itworker")
-ITWORKER_COMMIT = os.environ.get("OPENZI_ITWORKER_COMMIT", "main")
-APP_REPO = os.environ.get("OPENZI_APP_REPO")
-APP_COMMITS = [c.strip() for c in os.environ.get("OPENZI_APP_COMMIT", "").split(",") if c.strip()]
+ASSUME = os.environ.get("OPENZP_ASSUME_ROLE_ARN")
+DOMAIN = os.environ["OPENZP_DOMAIN"]
+API_KEY = os.environ["OPENZP_API_KEY"]
+SKIP_DOMAIN = os.environ.get("OPENZP_SKIP_DOMAIN", "1") in ("1", "true", "True")
+CONTACT = json.loads(os.environ.get("OPENZP_CONTACT") or "{}")
+ITWORKER_REPO = os.environ.get("OPENZP_ITWORKER_REPO", "hylswind/itworker")
+ITWORKER_COMMIT = os.environ.get("OPENZP_ITWORKER_COMMIT", "main")
+APP_REPO = os.environ.get("OPENZP_APP_REPO")
+APP_COMMITS = [c.strip() for c in os.environ.get("OPENZP_APP_COMMIT", "").split(",") if c.strip()]
 
-SETUP_TIMEOUT = float(os.environ.get("OPENZI_E2E_SETUP_TIMEOUT", 3600))
-DEPLOY_TIMEOUT = float(os.environ.get("OPENZI_E2E_DEPLOY_TIMEOUT", 2400))
-ACTION_TIMEOUT = float(os.environ.get("OPENZI_E2E_ACTION_TIMEOUT", 600))
-RECOVER_TIMEOUT = float(os.environ.get("OPENZI_E2E_RECOVER_TIMEOUT", 1800))
+SETUP_TIMEOUT = float(os.environ.get("OPENZP_E2E_SETUP_TIMEOUT", 3600))
+DEPLOY_TIMEOUT = float(os.environ.get("OPENZP_E2E_DEPLOY_TIMEOUT", 2400))
+ACTION_TIMEOUT = float(os.environ.get("OPENZP_E2E_ACTION_TIMEOUT", 600))
+RECOVER_TIMEOUT = float(os.environ.get("OPENZP_E2E_RECOVER_TIMEOUT", 1800))
 
 
 def log(*args):
@@ -81,13 +81,13 @@ def session():
     """Credentials for the test account, assumed from the management account — so a
     round that wedges is still recoverable from outside it.
 
-    With OPENZI_ASSUME_ROLE_ARN unset the ambient credentials are used directly. That
+    With OPENZP_ASSUME_ROLE_ARN unset the ambient credentials are used directly. That
     is the only way to target the credentials' own account, and it gives up the
     outside recovery path: the blast radius and the rescue key now live together."""
     if not ASSUME:
         return boto3.Session(region_name=driver.config.REGION)
     creds = boto3.client("sts").assume_role(
-        RoleArn=ASSUME, RoleSessionName="openzi-itworker-e2e")["Credentials"]
+        RoleArn=ASSUME, RoleSessionName="openzp-itworker-e2e")["Credentials"]
     return boto3.Session(aws_access_key_id=creds["AccessKeyId"],
                          aws_secret_access_key=creds["SecretAccessKey"],
                          aws_session_token=creds["SessionToken"],
@@ -102,7 +102,7 @@ def platform(session):
         # Checked here, not on the instance: a contact rejected mid-setup would have
         # already cost a launch, and a half-registered domain is not refundable.
         missing = [k for k in contacts.REQUIRED if not CONTACT.get(k)]
-        assert not missing, f"OPENZI_SKIP_DOMAIN=0 buys {DOMAIN}; contact is missing {missing}"
+        assert not missing, f"OPENZP_SKIP_DOMAIN=0 buys {DOMAIN}; contact is missing {missing}"
         log(f"buying {DOMAIN} — the registration path, not the reuse path")
     try:
         log("phase 1: create the admin role (the workflow's step 1)")
@@ -128,8 +128,8 @@ def platform(session):
         log("  control plane healthy")
         yield control
     finally:
-        if os.environ.get("OPENZI_E2E_KEEP") == "1":
-            log("OPENZI_E2E_KEEP=1 — leaving everything standing")
+        if os.environ.get("OPENZP_E2E_KEEP") == "1":
+            log("OPENZP_E2E_KEEP=1 — leaving everything standing")
         else:
             log("teardown: cleaning the account")
             driver.cleanup(session, log)
@@ -160,7 +160,7 @@ _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
 
 
 def _served_secret_hash(url: str) -> str:
-    """The example app publishes sha256(OPENZI_VERSION_SECRET) — the per-version
+    """The example app publishes sha256(OPENZP_VERSION_SECRET) — the per-version
     secret made observable without exposing it. Pull it back out of the page. The
     short wait absorbs a blip, not a regression: a version that genuinely stopped
     being served still fails, on the timeout."""
@@ -171,15 +171,15 @@ def _served_secret_hash(url: str) -> str:
 
 
 @pytest.mark.skipif(not (APP_REPO and APP_COMMITS),
-                    reason="set OPENZI_APP_REPO + OPENZI_APP_COMMIT to exercise deploy")
+                    reason="set OPENZP_APP_REPO + OPENZP_APP_COMMIT to exercise deploy")
 def test_app_lifecycle(platform):
     """init → deploy each version → every version is served on its own path with its
     own secret → delete each.
 
     Deploying more than one version is the part that proves the platform's central
     claim: the same app, at the same instant, hands each version a different
-    OPENZI_VERSION_SECRET, so one version cannot read another's."""
-    app = os.environ.get("OPENZI_APP_NAME", "e2e.dev")
+    OPENZP_VERSION_SECRET, so one version cannot read another's."""
+    app = os.environ.get("OPENZP_APP_NAME", "e2e.dev")
     shorts = [c[:7] for c in APP_COMMITS]
 
     log(f"init {app} -> {APP_REPO}")

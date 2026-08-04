@@ -4,7 +4,7 @@
 It clones this repo at the workflow-pinned commit (both baked in literally, and
 also readable from SSM) and boots straight into server mode. The first instance is
 launched by the workflow with a different, setup-mode user-data (built in the
-openzi-workflow package); both converge on the same server process."""
+openzp-workflow package); both converge on the same server process."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ _SERVER_TEMPLATE = r"""#!/bin/bash
 set -euxo pipefail
 dnf install -y git python3.11 python3.11-pip
 python3.11 -m pip install boto3
-rm -rf /opt/openzi-itworker
-git clone https://github.com/{repo}.git /opt/openzi-itworker
-cd /opt/openzi-itworker
+rm -rf /opt/openzp-itworker
+git clone https://github.com/{repo}.git /opt/openzp-itworker
+cd /opt/openzp-itworker
 git checkout {commit}
 export AWS_DEFAULT_REGION={region}
-exec python3.11 -m openzi_itworker server
+exec python3.11 -m openzp_itworker server
 """
 
 

@@ -14,7 +14,7 @@ def bake(ib, ssm, component_data: str, infra_arn: str, dist_arn: str) -> dict:
     """Returns the ami id plus the three Image Builder arns (the caller records them
     so the version can be torn down later). Raises RuntimeError on a failed build."""
     base_ami = ssm.get_parameter(Name=config.BASE_AMI_PARAM)["Parameter"]["Value"]
-    name = f"openzi-{uuid.uuid4().hex[:16]}"
+    name = f"openzp-{uuid.uuid4().hex[:16]}"
 
     component = ib.create_component(
         name=name, semanticVersion="1.0.0", platform="Linux", data=component_data)

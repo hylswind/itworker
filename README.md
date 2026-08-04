@@ -1,11 +1,11 @@
-# openzi-itworker
+# openzp-itworker
 
-The in-account side of openzi. It runs on the EC2 the workflow launches in the account
+The in-account side of openzp. It runs on the EC2 the workflow launches in the account
 and builds the app-hosting platform there, then serves the deploy API. Its code is
 pinned by the workflow's commit (the launch user-data clones an exact sha), so what
 runs here is what the signed proof attests to.
 
-## Two modes — `python -m openzi_itworker <setup|server>`
+## Two modes — `python -m openzp_itworker <setup|server>`
 
 ### setup (run once by the workflow-launched instance)
 
@@ -19,7 +19,7 @@ runs here is what the signed proof attests to.
 3. Deploy `cloudformation/platform_stack.yaml`, then wire this instance into the
    control ASG + target group (create a control SG, attach it, create the LT/ASG,
    attach the instance) so the daily restart can replace it seamlessly.
-4. Write the result marker (`/openzi/setup/ok` or, on any failure, `/openzi/setup/failed`
+4. Write the result marker (`/openzp/setup/ok` or, on any failure, `/openzp/setup/failed`
    — the workflow polls for the name). Setup is wrapped so a failure still signals.
 5. Exec into server mode.
 
@@ -28,7 +28,7 @@ runs here is what the signed proof attests to.
 The `init` / `deploy` / `delete` / `recover` API on `:8080`, reached via
 `https://admin.{domain}` (control ALB → this instance). Every route except the ALB
 health check requires the bearer key in `x-api-key`, compared against the SecureString
-at `/openzi/api-key`. `recover` tears the platform down and deletes the sign-in
+at `/openzp/api-key`. `recover` tears the platform down and deletes the sign-in
 lockout (listing and removing all statements) to restore console login.
 
 `GET /console-password` returns the billing user's login. It has to live here: once
@@ -36,7 +36,7 @@ the workflow has deleted the root key and sealed the console, the API key is the
 operator's only credential, so a password sitting in SSM is unreachable — and the
 sole alternative would be `recover`, which razes the platform to read a bill.
 
-Deploy client: `deploy_client/openzi.sh https://admin.<domain> <API_KEY> <action> …`.
+Deploy client: `deploy_client/openzp.sh https://admin.<domain> <API_KEY> <action> …`.
 
 ## Architecture notes
 
@@ -45,14 +45,14 @@ Deploy client: `deploy_client/openzi.sh https://admin.<domain> <API_KEY> <action
   target instances in its own VPC. **Apps** live in the self-built VPC from the CFN
   template; app isolation is by security groups + per-version IAM roles + IMDS
   blocking, unchanged.
-- The control instance runs under the workflow-created `openzi-admin` role.
+- The control instance runs under the workflow-created `openzp-admin` role.
 - The billing user (`console`) is exempt from the sign-in lockout; setup generates
-  its password and stores it at `/openzi/console-password` (SecureString).
+  its password and stores it at `/openzp/console-password` (SecureString).
 
 ## App contract
 
 An app repo has a `Dockerfile` at its root; the container serves traffic on `:8080`
-and health on `:8081`, and receives `OPENZI_VERSION_SECRET` in its environment.
+and health on `:8081`, and receives `OPENZP_VERSION_SECRET` in its environment.
 
 ## Operator prerequisites
 
@@ -79,18 +79,18 @@ network.
 `tests/e2e/` brings itworker up in a real account and drives the whole lifecycle:
 setup → control-plane health → init → deploy → the app is served → delete → recover.
 Passing two or more commits deploys them side by side and asserts they were handed
-*different* `OPENZI_VERSION_SECRET`s — per-version isolation, observed end to end.
+*different* `OPENZP_VERSION_SECRET`s — per-version isolation, observed end to end.
 The driver plays the GitHub workflow's role *minus* the destructive half — it creates
 the admin role and launches the instance, but uses **no root key and never locks the
 console** — so the same test account can be reused indefinitely.
 
 ```
-export OPENZI_E2E=1
-export OPENZI_ASSUME_ROLE_ARN=arn:aws:iam::<test-account>:role/<assumable-role>
-export OPENZI_DOMAIN=<a domain the test account already owns>
-export OPENZI_API_KEY=<any string; installed as the control-plane key>
-export OPENZI_ITWORKER_COMMIT=<pushed sha>          # default: main
-export OPENZI_APP_REPO=owner/app OPENZI_APP_COMMIT=<sha>[,<sha>…]  # optional: deploy phase
+export OPENZP_E2E=1
+export OPENZP_ASSUME_ROLE_ARN=arn:aws:iam::<test-account>:role/<assumable-role>
+export OPENZP_DOMAIN=<a domain the test account already owns>
+export OPENZP_API_KEY=<any string; installed as the control-plane key>
+export OPENZP_ITWORKER_COMMIT=<pushed sha>          # default: main
+export OPENZP_APP_REPO=owner/app OPENZP_APP_COMMIT=<sha>[,<sha>…]  # optional: deploy phase
 pytest tests/e2e -s
 ```
 
@@ -98,13 +98,13 @@ Notes:
 
 - The instance **clones itworker from GitHub**, so it runs a *pushed* commit —
   uncommitted local work is not what gets tested.
-- The domain is reused, not bought (`OPENZI_SKIP_DOMAIN` defaults to 1), so a round
+- The domain is reused, not bought (`OPENZP_SKIP_DOMAIN` defaults to 1), so a round
   costs no registration fee; it does create real billable infra (two ALBs, EC2,
-  Image Builder) for ~40-60 min. Set `OPENZI_SKIP_DOMAIN=0` (plus `OPENZI_CONTACT`)
+  Image Builder) for ~40-60 min. Set `OPENZP_SKIP_DOMAIN=0` (plus `OPENZP_CONTACT`)
   to exercise the real `RegisterDomain` path instead — that buys the domain, which
   is not refundable, and teardown keeps it. Allow much longer for setup: a new
   domain's NS delegation has to propagate before its ACM cert can validate.
-- Teardown always runs. `OPENZI_E2E_KEEP=1` leaves everything standing for
+- Teardown always runs. `OPENZP_E2E_KEEP=1` leaves everything standing for
   debugging; the domain and hosted zone are kept either way.
 - If setup wedges, nobody can SSH in — assume into the account and use **SSM Session
   Manager** to read `journalctl` / `/var/log/cloud-init-output.log` on the instance.

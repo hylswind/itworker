@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  openzi platform (the target account). A self-built VPC with an internet-facing app ALB for
+  openzp platform (the target account). A self-built VPC with an internet-facing app ALB for
   app+commit-addressed routing (/{app}/{sha}/* and /{app}/info.json); an
   internet-facing control ALB in the DEFAULT VPC fronting the itworker instance
   (admin subdomain, bearer-key authenticated) that runs init/deploy/delete/recover;
@@ -46,7 +46,7 @@ Resources:
       CidrBlock: 10.0.0.0/16
       EnableDnsSupport: true
       EnableDnsHostnames: true
-      Tags: [{ Key: Name, Value: openzi-vpc }]
+      Tags: [{ Key: Name, Value: openzp-vpc }]
   Igw:
     Type: AWS::EC2::InternetGateway
   IgwAttach:
@@ -119,7 +119,7 @@ Resources:
   AppAlb:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: openzi-alb
+      Name: openzp-alb
       Scheme: internet-facing
       Type: application
       SecurityGroups: [!Ref AppAlbSg]
@@ -173,7 +173,7 @@ Resources:
   ControlAlb:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: openzi-ctrl-alb
+      Name: openzp-ctrl-alb
       Scheme: internet-facing
       Type: application
       SecurityGroups: [!Ref ControlAlbSg]
@@ -181,7 +181,7 @@ Resources:
   ControlTg:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: openzi-ctrl-tg
+      Name: openzp-ctrl-tg
       Protocol: HTTP
       Port: 8080
       VpcId: !Ref DefaultVpcId
@@ -238,7 +238,7 @@ Resources:
         - arn:aws:iam::aws:policy/job-function/ViewOnlyAccess
 
   # App instances get NO shared role. Each deployed version's launch template uses a
-  # per-version instance role (openzi-secret-{n}-{sha}, created at deploy) scoped to
+  # per-version instance role (openzp-secret-{n}-{sha}, created at deploy) scoped to
   # read ONLY that version's secret; the container is additionally IMDS-blocked.
   InstanceSg:
     Type: AWS::EC2::SecurityGroup
@@ -251,19 +251,19 @@ Resources:
 
   # --- SSM: the monotonic ALB-priority allocator (init + deploy share it; the number
   # doubles as the unique token in per-version resource names). Runtime state also
-  # lives under /openzi/: apps/{app}, versions/{app}/{sha}, secrets/{app}/{sha},
+  # lives under /openzp/: apps/{app}, versions/{app}/{sha}, secrets/{app}/{sha},
   # jobs/{id}, api-key, pinned-commit, repo, console-password, setup/{ok,failed}. ---
   PriorityCounterParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /openzi/priority-counter
+      Name: /openzp/priority-counter
       Type: String
       Value: "0"
   # Platform facts the server reads at runtime (was CFN !Sub baked into the old SFNs).
   PlatformConfigParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /openzi/platform-config
+      Name: /openzp/platform-config
       Type: String
       Value: !Sub |
         {"region":"${AWS::Region}","account_id":"${AWS::AccountId}",
@@ -277,7 +277,7 @@ Resources:
   IbInstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: openzi-imagebuilder
+      RoleName: openzp-imagebuilder
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -288,12 +288,12 @@ Resources:
   IbInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: openzi-imagebuilder
+      InstanceProfileName: openzp-imagebuilder
       Roles: [!Ref IbInstanceRole]
   IbInfraConfig:
     Type: AWS::ImageBuilder::InfrastructureConfiguration
     Properties:
-      Name: openzi-deploy-infra
+      Name: openzp-deploy-infra
       InstanceProfileName: !Ref IbInstanceProfile
       InstanceTypes: [t3.small]
       SubnetId: !Ref SubnetA
@@ -308,17 +308,17 @@ Resources:
   IbDistConfig:
     Type: AWS::ImageBuilder::DistributionConfiguration
     Properties:
-      Name: openzi-deploy-dist
+      Name: openzp-deploy-dist
       Distributions:
         - Region: !Ref AWS::Region
           AmiDistributionConfiguration: {}
 
   # --- Daily self-heal: terminate the control instance; the ASG (created by itworker
-  # setup, named openzi-control) rebuilds it from its launch template. ---
+  # setup, named openzp-control) rebuilds it from its launch template. ---
   RestartSfnRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: openzi-restart-sfn
+      RoleName: openzp-restart-sfn
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -339,7 +339,7 @@ Resources:
   RestartSfn:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: openzi-restart
+      StateMachineName: openzp-restart
       RoleArn: !GetAtt RestartSfnRole.Arn
       DefinitionString: |
         {
@@ -348,7 +348,7 @@ Resources:
           "States": {
             "DescribeAsg": {
               "Type": "Task", "Resource": "arn:aws:states:::aws-sdk:autoscaling:describeAutoScalingGroups",
-              "Parameters": {"AutoScalingGroupNames": ["openzi-control"]},
+              "Parameters": {"AutoScalingGroupNames": ["openzp-control"]},
               "ResultPath": "$.asg", "Next": "HasInstance"
             },
             "HasInstance": {
@@ -367,7 +367,7 @@ Resources:
   SchedulerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: openzi-restart-scheduler
+      RoleName: openzp-restart-scheduler
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -385,7 +385,7 @@ Resources:
   RestartSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
-      Name: openzi-restart-daily
+      Name: openzp-restart-daily
       ScheduleExpression: cron(0 3 * * ? *)
       ScheduleExpressionTimezone: Asia/Taipei   # 03:00 Taipei (DST-aware); default would be UTC
       FlexibleTimeWindow: { Mode: "OFF" }

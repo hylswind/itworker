@@ -1,5 +1,5 @@
 """Parse setup-mode configuration from the environment. The workflow's launch
-user-data sets these before running `python -m openzi_itworker setup`."""
+user-data sets these before running `python -m openzp_itworker setup`."""
 
 from __future__ import annotations
 
@@ -24,22 +24,22 @@ class SetupConfig:
     @classmethod
     def from_env(cls, env: dict | None = None) -> "SetupConfig":
         e = os.environ if env is None else env
-        missing = [k for k in ("OPENZI_DOMAIN", "OPENZI_END", "OPENZI_API_KEY",
-                               "OPENZI_REPO", "OPENZI_COMMIT") if not e.get(k)]
+        missing = [k for k in ("OPENZP_DOMAIN", "OPENZP_END", "OPENZP_API_KEY",
+                               "OPENZP_REPO", "OPENZP_COMMIT") if not e.get(k)]
         if missing:
             raise ValueError(f"setup: missing env {missing}")
-        contact_raw = e.get("OPENZI_CONTACT") or "{}"
+        contact_raw = e.get("OPENZP_CONTACT") or "{}"
         try:
             contact = json.loads(contact_raw)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"setup: OPENZI_CONTACT is not valid JSON: {exc}") from exc
+            raise ValueError(f"setup: OPENZP_CONTACT is not valid JSON: {exc}") from exc
         return cls(
-            domain=e["OPENZI_DOMAIN"],
-            end_epoch=int(e["OPENZI_END"]),
-            api_key=e["OPENZI_API_KEY"],
-            repo=e["OPENZI_REPO"],
-            commit=e["OPENZI_COMMIT"],
+            domain=e["OPENZP_DOMAIN"],
+            end_epoch=int(e["OPENZP_END"]),
+            api_key=e["OPENZP_API_KEY"],
+            repo=e["OPENZP_REPO"],
+            commit=e["OPENZP_COMMIT"],
             contact=contact,
-            skip_domain=e.get("OPENZI_SKIP_DOMAIN", "0") in ("1", "true", "True"),
-            region=e.get("OPENZI_REGION") or config.REGION,
+            skip_domain=e.get("OPENZP_SKIP_DOMAIN", "0") in ("1", "true", "True"),
+            region=e.get("OPENZP_REGION") or config.REGION,
         )

@@ -1,6 +1,6 @@
 import pytest
 
-from openzi_itworker.setup import contacts, registrar
+from openzp_itworker.setup import contacts, registrar
 
 _CONTACT = {
     "FirstName": "Ada", "LastName": "Lovelace", "AddressLine1": "1 Analytical Way",
@@ -18,9 +18,9 @@ def test_build_contact_ok_defaults_person():
 
 
 def test_build_contact_passes_optional_fields():
-    c = dict(_CONTACT, State="London", OrganizationName="Openzi", ContactType="COMPANY")
+    c = dict(_CONTACT, State="London", OrganizationName="Openzp", ContactType="COMPANY")
     detail = contacts.build_contact(c)
-    assert detail["OrganizationName"] == "Openzi" and detail["ContactType"] == "COMPANY"
+    assert detail["OrganizationName"] == "Openzp" and detail["ContactType"] == "COMPANY"
 
 
 def test_build_contact_missing_field_raises():

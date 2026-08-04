@@ -4,9 +4,9 @@ a recording _json, so no sockets are involved."""
 import fakes
 from fakes import FakeSsm
 
-from openzi_itworker import config
-from openzi_itworker.server import jobs
-from openzi_itworker.server.server import Handler
+from openzp_itworker import config
+from openzp_itworker.server import jobs
+from openzp_itworker.server.server import Handler
 
 
 def _handler(api_key="secret", supplied="secret", path="/", ssm=None):

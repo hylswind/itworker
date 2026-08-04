@@ -1,8 +1,8 @@
 from fakes import FakeSsm
 
-from openzi_itworker import config, userdata
-from openzi_itworker.setup import apikey, marker
-from openzi_itworker.setup.config import SetupConfig
+from openzp_itworker import config, userdata
+from openzp_itworker.setup import apikey, marker
+from openzp_itworker.setup.config import SetupConfig
 
 
 # ---------- apikey / markers ----------
@@ -28,15 +28,15 @@ def test_marker_names_encode_outcome():
 # ---------- SetupConfig.from_env ----------
 
 def _env(**over):
-    base = {"OPENZI_DOMAIN": "example.com", "OPENZI_END": "1700000000",
-            "OPENZI_API_KEY": "k", "OPENZI_REPO": "o/r", "OPENZI_COMMIT": "abc1234",
-            "OPENZI_CONTACT": '{"Email":"a@b.c"}'}
+    base = {"OPENZP_DOMAIN": "example.com", "OPENZP_END": "1700000000",
+            "OPENZP_API_KEY": "k", "OPENZP_REPO": "o/r", "OPENZP_COMMIT": "abc1234",
+            "OPENZP_CONTACT": '{"Email":"a@b.c"}'}
     base.update(over)
     return base
 
 
 def test_setupconfig_parses_env():
-    cfg = SetupConfig.from_env(_env(OPENZI_SKIP_DOMAIN="1"))
+    cfg = SetupConfig.from_env(_env(OPENZP_SKIP_DOMAIN="1"))
     assert cfg.domain == "example.com" and cfg.end_epoch == 1700000000
     assert cfg.skip_domain is True and cfg.contact["Email"] == "a@b.c"
 
@@ -44,7 +44,7 @@ def test_setupconfig_parses_env():
 def test_setupconfig_missing_env_raises():
     import pytest
     bad = _env()
-    del bad["OPENZI_DOMAIN"]
+    del bad["OPENZP_DOMAIN"]
     with pytest.raises(ValueError, match="missing env"):
         SetupConfig.from_env(bad)
 
@@ -52,7 +52,7 @@ def test_setupconfig_missing_env_raises():
 # ---------- replacement-instance user-data ----------
 
 def test_server_userdata_clones_pinned_commit():
-    ud = userdata.build_server_userdata("owner/openzi-itworker", "abc1234", "us-east-1")
+    ud = userdata.build_server_userdata("owner/openzp-itworker", "abc1234", "us-east-1")
     assert "git checkout abc1234" in ud
-    assert "github.com/owner/openzi-itworker" in ud
-    assert "python3.11 -m openzi_itworker server" in ud
+    assert "github.com/owner/openzp-itworker" in ud
+    assert "python3.11 -m openzp_itworker server" in ud

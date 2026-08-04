@@ -1,6 +1,6 @@
-"""openzi-itworker — runs on the EC2 in the target account.
+"""openzp-itworker — runs on the EC2 in the target account.
 
-Two modes, dispatched by ``python -m openzi_itworker <mode>``:
+Two modes, dispatched by ``python -m openzp_itworker <mode>``:
 
 - ``setup``  — run once by the instance the GitHub workflow launches: wait out the
   audit window, register the domain, deploy the platform, wire the control plane,

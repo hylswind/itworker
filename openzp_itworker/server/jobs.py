@@ -1,5 +1,5 @@
 """Async job tracking in SSM. Every action runs in a background thread; its status
-lives in /openzi/jobs/{id} so it survives the daily instance restart — a client can
+lives in /openzp/jobs/{id} so it survives the daily instance restart — a client can
 still poll a job whose worker was killed by the restart (it reads FAILED). Terminal
 records carry a `finished_at` epoch so the boot-time sweep can prune old ones."""
 
@@ -43,7 +43,7 @@ def get(ssm, job_id: str) -> dict | None:
 
 
 def sweep(ssm) -> tuple[int, int]:
-    """Boot-time housekeeping over /openzi/jobs/*, one pass:
+    """Boot-time housekeeping over /openzp/jobs/*, one pass:
       - reap: a still-RUNNING job's worker died with the previous instance -> FAILED
         (with a fresh finished_at, so a client polling after the restart still sees
         a terminal state and it survives the TTL);
@@ -53,7 +53,7 @@ def sweep(ssm) -> tuple[int, int]:
     reaped = pruned = 0
     cutoff = int(time.time()) - config.JOB_TTL_SECONDS
     paginator = ssm.get_paginator("get_parameters_by_path")
-    for page in paginator.paginate(Path="/openzi/jobs/", Recursive=False):
+    for page in paginator.paginate(Path="/openzp/jobs/", Recursive=False):
         for param in page.get("Parameters", []):
             doc = json.loads(param["Value"])
             if doc.get("status") == config.JOB_RUNNING:

@@ -27,12 +27,12 @@ def test_cfn_lint_reports_no_errors():
 
 def test_dropped_control_channel_is_gone(text):
     for banned in ("AWS::ApiGateway", "VpcLink", "BundleBucket",
-                   "resolve:ssm:/openzi/ctrl-ami", "CtrlPlaceholderAmi"):
+                   "resolve:ssm:/openzp/ctrl-ami", "CtrlPlaceholderAmi"):
         assert banned not in text, f"{banned} should have been removed"
 
 
 def test_external_control_alb_and_admin_routing_present(text):
-    assert "openzi-ctrl-alb" in text
+    assert "openzp-ctrl-alb" in text
     assert text.count("Scheme: internet-facing") >= 2   # app ALB + control ALB
     assert "admin.${Domain}" in text                     # SAN + alias + host
     assert "SubjectAlternativeNames" in text
@@ -48,8 +48,8 @@ def test_billing_user_scoped(text):
 
 def test_daily_restart_wiring(text):
     assert "Asia/Taipei" in text
-    assert "openzi-restart" in text
-    assert '"AutoScalingGroupNames": ["openzi-control"]' in text
+    assert "openzp-restart" in text
+    assert '"AutoScalingGroupNames": ["openzp-control"]' in text
 
 
 def test_outputs_for_setup(text):

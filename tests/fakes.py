@@ -98,7 +98,7 @@ class FakeCtx:
 
 
 def platform():
-    from openzi_itworker.context import Platform
+    from openzp_itworker.context import Platform
     return Platform(region="us-east-1", account_id="123456789012", vpc="vpc-1",
                     subnet_a="s-a", subnet_b="s-b", app_listener_arn="arn:listener",
                     instance_sg_id="sg-1", ib_infra_arn="arn:infra", ib_dist_arn="arn:dist",

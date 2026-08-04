@@ -4,7 +4,7 @@ import pytest
 from botocore.exceptions import ClientError
 from fakes import FakeElb, FakeSsm, FakeCtx, platform
 
-from openzi_itworker.server import actions
+from openzp_itworker.server import actions
 
 
 # ---------- signin teardown against the REAL botocore model ----------
@@ -118,7 +118,7 @@ class _RecoverElb(FakeElb):
         self.deleted_rules.append(RuleArn)
 
     def describe_target_groups(self):
-        return {"TargetGroups": [{"TargetGroupName": "openzi-tg-1-abc1234",
+        return {"TargetGroups": [{"TargetGroupName": "openzp-tg-1-abc1234",
                                   "TargetGroupArn": "arn:tg/1"}]}
 
     def delete_target_group(self, TargetGroupArn):
@@ -178,12 +178,12 @@ def _recover_ctx(monkeypatch, groups, instance_states, ec2=None):
     monkeypatch.setattr(actions, "_TERMINATE_POLL", 0)
     monkeypatch.setattr(actions.time, "sleep", lambda *_: None)
     ssm = FakeSsm({
-        "/openzi/apps/app-one.dev": json.dumps({"app": "app-one.dev"}),
-        "/openzi/versions/app-one.dev/abc1234": json.dumps(
-            {"asg_name": "openzi-asg-1-abc1234", "ami": "ami-1", "image_arn": "arn:image/1",
+        "/openzp/apps/app-one.dev": json.dumps({"app": "app-one.dev"}),
+        "/openzp/versions/app-one.dev/abc1234": json.dumps(
+            {"asg_name": "openzp-asg-1-abc1234", "ami": "ami-1", "image_arn": "arn:image/1",
              "recipe_arn": "arn:recipe/1", "component_arn": "arn:component/1"}),
-        "/openzi/secrets/app-one.dev/abc1234": "secret",
-        "/openzi/priority-counter": "1",
+        "/openzp/secrets/app-one.dev/abc1234": "secret",
+        "/openzp/priority-counter": "1",
     })
     signin = _RecoverSignin()
     clients = {"elbv2": _RecoverElb([{"IsDefault": True}]),
@@ -210,13 +210,13 @@ class _RecoverEc2(_FakeEc2Instances):
 
 
 def test_recover_wipes_apps_versions_secrets_and_unlocks_after_termination(monkeypatch):
-    groups = [{"AutoScalingGroupName": "openzi-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    groups = [{"AutoScalingGroupName": "openzp-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
     ctx, ssm, signin = _recover_ctx(monkeypatch, groups, {"i-1": ["running", "terminated"]})
     actions.recover(ctx, {})
-    assert not [n for n in ssm.params if n.startswith("/openzi/apps/")]
-    assert not [n for n in ssm.params if n.startswith("/openzi/versions/")]
-    assert not [n for n in ssm.params if n.startswith("/openzi/secrets/")]
-    assert "/openzi/priority-counter" in ssm.params
+    assert not [n for n in ssm.params if n.startswith("/openzp/apps/")]
+    assert not [n for n in ssm.params if n.startswith("/openzp/versions/")]
+    assert not [n for n in ssm.params if n.startswith("/openzp/secrets/")]
+    assert "/openzp/priority-counter" in ssm.params
     assert signin.unlocked
 
 
@@ -225,7 +225,7 @@ def test_recover_deletes_the_bake_artifacts_before_dropping_the_manifests(monkey
     no prefix sweep reaches them — the version manifest is the only thing that knows
     their arns, and recover deletes that manifest. Miss this and the snapshots bill
     forever with nothing left pointing at them."""
-    groups = [{"AutoScalingGroupName": "openzi-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    groups = [{"AutoScalingGroupName": "openzp-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
     ctx, ssm, _ = _recover_ctx(monkeypatch, groups, {"i-1": ["running", "terminated"]})
     actions.recover(ctx, {})
 
@@ -235,11 +235,11 @@ def test_recover_deletes_the_bake_artifacts_before_dropping_the_manifests(monkey
     # order is the dependency order: image built from recipe, recipe uses component
     assert ib.deleted == [("image", "arn:image/1"), ("recipe", "arn:recipe/1"),
                           ("component", "arn:component/1")]
-    assert not [n for n in ssm.params if n.startswith("/openzi/versions/")]
+    assert not [n for n in ssm.params if n.startswith("/openzp/versions/")]
 
 
 def test_recover_unlocks_strictly_after_instances_terminate(monkeypatch):
-    groups = [{"AutoScalingGroupName": "openzi-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    groups = [{"AutoScalingGroupName": "openzp-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
     holder = {}
 
     class _GatedEc2(_RecoverEc2):

@@ -1,4 +1,4 @@
-"""Entry point: `python -m openzi_itworker <setup|server>`.
+"""Entry point: `python -m openzp_itworker <setup|server>`.
 
 - setup:  read config from the environment (set by the launch user-data), build a
           boto3 session on the instance profile, and run the one-shot bring-up.
@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         serve()
         return 0
 
-    sys.stderr.write("usage: python -m openzi_itworker <setup|server>\n")
+    sys.stderr.write("usage: python -m openzp_itworker <setup|server>\n")
     return 2
 
 
