@@ -31,10 +31,7 @@ health check requires the bearer key in `x-api-key`, compared against the Secure
 at `/openzp/api-key`. `recover` tears the platform down and deletes the sign-in
 lockout (listing and removing all statements) to restore console login.
 
-`GET /console-password` returns the billing user's login. It has to live here: once
-the workflow has deleted the root key and sealed the console, the API key is the
-operator's only credential, so a password sitting in SSM is unreachable — and the
-sole alternative would be `recover`, which razes the platform to read a bill.
+`GET /console-password` returns the billing user's name, password and sign-in URL.
 
 Deploy client: `deploy_client/openzp.sh https://admin.<domain> <API_KEY> <action> …`.
 
@@ -60,8 +57,7 @@ and health on `:8081`, and receives `OPENZP_VERSION_SECRET` in its environment.
   `City`, `CountryCode`, `ZipCode`, `PhoneNumber`, `Email` (`PhoneNumber` in Route 53
   form, e.g. `+1.2025551234`). Only generic TLDs needing no extra registration
   parameters are supported.
-- The account type is assumed **standalone root**; org-member accounts (used for
-  recoverable testing) always classify as test.
+- The account is assumed to be a **standalone root** account.
 
 ## Testing
 
@@ -96,15 +92,11 @@ pytest tests/e2e -s
 
 Notes:
 
-- The instance **clones itworker from GitHub**, so it runs a *pushed* commit —
-  uncommitted local work is not what gets tested.
 - The domain is reused, not bought (`OPENZP_SKIP_DOMAIN` defaults to 1), so a round
   costs no registration fee; it does create real billable infra (two ALBs, EC2,
-  Image Builder) for ~40-60 min. Set `OPENZP_SKIP_DOMAIN=0` (plus `OPENZP_CONTACT`)
-  to exercise the real `RegisterDomain` path instead — that buys the domain, which
-  is not refundable, and teardown keeps it. Allow much longer for setup: a new
-  domain's NS delegation has to propagate before its ACM cert can validate.
+  Image Builder). Set `OPENZP_SKIP_DOMAIN=0` (plus `OPENZP_CONTACT`) to exercise the
+  real `RegisterDomain` path instead — that buys the domain, which is not refundable,
+  and teardown keeps it. Allow much longer for setup: a new domain's NS delegation
+  has to propagate before its ACM cert can validate.
 - Teardown always runs. `OPENZP_E2E_KEEP=1` leaves everything standing for
   debugging; the domain and hosted zone are kept either way.
-- If setup wedges, nobody can SSH in — assume into the account and use **SSM Session
-  Manager** to read `journalctl` / `/var/log/cloud-init-output.log` on the instance.

@@ -7,8 +7,8 @@ console. So this can rerun against the same test account indefinitely, which mak
 it the main iteration tool for itworker. (The workflow's own e2e covers the
 destructive path.)
 
-Opt-in; skipped unless OPENZP_E2E=1. One round takes ~40-60 min and creates real,
-billable resources (two ALBs, EC2, Image Builder).
+Opt-in; skipped unless OPENZP_E2E=1. A round creates real, billable resources (two
+ALBs, EC2, Image Builder).
 
 Env:
   OPENZP_E2E=1                enable
