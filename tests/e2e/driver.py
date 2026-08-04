@@ -227,18 +227,30 @@ def cleanup(session, log=print) -> None:
     iam = session.client("iam")
     ssm = session.client("ssm")
 
-    log("  deleting the control ASG")
-    _swallow(asg.delete_auto_scaling_group,
-             AutoScalingGroupName=config.CONTROL_ASG_NAME, ForceDelete=True)
+    # Take each group's instance ids BEFORE deleting it: ForceDelete only INITIATES
+    # termination, so once the group is gone there is nothing left to read them from
+    # while the instances are still alive. recover does this for the same reason.
+    log("  deleting the control ASG and any app ASGs")
+    ids: list[str] = []
+    for group in asg.describe_auto_scaling_groups().get("AutoScalingGroups", []):
+        name = group["AutoScalingGroupName"]
+        # App ASGs are usually gone by now — recover removes them — but a round that
+        # died between deploy and recover leaves them holding instances INSIDE the
+        # stack's VPC, and a VPC whose ENIs are still in use cannot be deleted.
+        if name != config.CONTROL_ASG_NAME and not name.startswith(config.ASG_PREFIX):
+            continue
+        ids += [i["InstanceId"] for i in group.get("Instances", [])]
+        _swallow(asg.delete_auto_scaling_group, AutoScalingGroupName=name, ForceDelete=True)
 
-    log("  terminating e2e instances")
-    ids = [i["InstanceId"]
-           for r in ec2.describe_instances(
-               Filters=[{"Name": "tag:Name", "Values": [E2E_INSTANCE_TAG]},
-                        {"Name": "instance-state-name",
-                         "Values": ["pending", "running", "stopping", "stopped"]}]
-           ).get("Reservations", [])
-           for i in r.get("Instances", [])]
+    log("  terminating instances")
+    ids += [i["InstanceId"]  # launched outside any ASG, and tagged only by this driver
+            for r in ec2.describe_instances(
+                Filters=[{"Name": "tag:Name", "Values": [E2E_INSTANCE_TAG]},
+                         {"Name": "instance-state-name",
+                          "Values": ["pending", "running", "stopping", "stopped"]}]
+            ).get("Reservations", [])
+            for i in r.get("Instances", [])]
+    ids = sorted(set(ids))
     if ids:
         _swallow(ec2.terminate_instances, InstanceIds=ids)
         _wait_terminated(ec2, ids, log)
@@ -267,10 +279,15 @@ def cleanup(session, log=print) -> None:
 
 
 def _wait_terminated(ec2, ids, log, timeout=600) -> None:
+    """Filters, not InstanceIds: the list can now include instances that terminated
+    long ago (an app ASG left behind by an earlier failed round), and AWS purges those
+    records — an InstanceIds query raises on a purged id, a Filters query just omits
+    it, which reads correctly as 'gone'."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         states = {i["State"]["Name"]
-                  for r in ec2.describe_instances(InstanceIds=ids).get("Reservations", [])
+                  for r in ec2.describe_instances(
+                      Filters=[{"Name": "instance-id", "Values": ids}]).get("Reservations", [])
                   for i in r.get("Instances", [])}
         if states <= {"terminated"}:
             return
