@@ -33,7 +33,33 @@ lockout (listing and removing all statements) to restore console login.
 
 `GET /console-password` returns the billing user's name, password and sign-in URL.
 
-Deploy client: `deploy_client/openzp.sh https://admin.<domain> <API_KEY> <action> …`.
+## Deploy client
+
+`deploy_client/openzp.sh <admin-url> <API_KEY> <action> …` submits an action and
+polls its job until it succeeds or fails.
+
+```
+API=https://admin.example.com
+KEY=<the control-plane key>
+
+# bind an app name to a repo — once; the binding is immutable
+openzp.sh $API $KEY init myapp.dev owner/myapp
+
+# build the version's AMI and route /myapp.dev/1a2b3c4/* to it
+openzp.sh $API $KEY deploy myapp.dev 1a2b3c4
+
+# tear one version down; other versions and the app binding are untouched
+openzp.sh $API $KEY delete myapp.dev 1a2b3c4
+
+# the billing user's login (returns immediately — there is no job to poll)
+openzp.sh $API $KEY console-password
+
+# wipe every app and every version, and restore console login
+openzp.sh $API $KEY recover
+```
+
+After `init` the binding is published at `https://<domain>/myapp.dev/info.json`;
+after `deploy` the version is served at `https://<domain>/myapp.dev/1a2b3c4/`.
 
 ## Architecture notes
 
