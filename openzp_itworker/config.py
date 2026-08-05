@@ -69,6 +69,9 @@ CONTROL_PORT = 8080
 # The admin role+profile the workflow created (EC2 trust, AdministratorAccess). The
 # control ASG's launch template runs replacement instances under it.
 ADMIN_PROFILE_NAME = "openzp-admin"
+# The empty VPC the sign-in lock is anchored to, created alongside the lock itself.
+# recover drops it once the lock is gone; the name is the only handle on it.
+SIGNIN_LOCK_VPC_NAME = "openzp-signin-lock-vpc"
 
 # --- CloudFormation ---
 PLATFORM_STACK_NAME = "openzp-platform"

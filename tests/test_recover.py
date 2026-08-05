@@ -4,6 +4,7 @@ import pytest
 from botocore.exceptions import ClientError
 from fakes import FakeElb, FakeSsm, FakeCtx, platform
 
+from openzp_itworker import config
 from openzp_itworker.server import actions
 
 
@@ -197,7 +198,15 @@ def _recover_ctx(monkeypatch, groups, instance_states, ec2=None):
 class _RecoverEc2(_FakeEc2Instances):
     def __init__(self, states):
         super().__init__(states)
-        self.deregistered, self.snapshots_deleted = [], []
+        self.deregistered, self.snapshots_deleted, self.deleted_vpcs = [], [], []
+
+    def describe_vpcs(self, Filters):
+        want = next(f["Values"] for f in Filters if f["Name"] == "tag:Name")
+        assert want == [config.SIGNIN_LOCK_VPC_NAME]
+        return {"Vpcs": [{"VpcId": "vpc-anchor"}]}
+
+    def delete_vpc(self, VpcId):
+        self.deleted_vpcs.append(VpcId)
 
     def describe_images(self, ImageIds):
         return {"Images": [{"BlockDeviceMappings": [{"Ebs": {"SnapshotId": "snap-1"}}]}]}
@@ -236,6 +245,24 @@ def test_recover_deletes_the_bake_artifacts_before_dropping_the_manifests(monkey
     assert ib.deleted == [("image", "arn:image/1"), ("recipe", "arn:recipe/1"),
                           ("component", "arn:component/1")]
     assert not [n for n in ssm.params if n.startswith("/openzp/versions/")]
+
+
+def test_recover_drops_the_signin_anchor_vpc_only_after_unlocking(monkeypatch):
+    """Order is the whole point: removing the anchor while the lock still stands would
+    leave a condition that can never be satisfied, sealing the console for good."""
+    groups = [{"AutoScalingGroupName": "openzp-asg-1-abc1234", "Instances": [{"InstanceId": "i-1"}]}]
+    holder = {}
+
+    class _OrderedEc2(_RecoverEc2):
+        def delete_vpc(self, VpcId):
+            assert holder["signin"].unlocked is True, "anchor dropped before the unlock"
+            super().delete_vpc(VpcId)
+
+    ec2 = _OrderedEc2({"i-1": ["running", "terminated"]})
+    ctx, _, signin = _recover_ctx(monkeypatch, groups, None, ec2=ec2)
+    holder["signin"] = signin
+    actions.recover(ctx, {})
+    assert ec2.deleted_vpcs == ["vpc-anchor"]
 
 
 def test_recover_unlocks_strictly_after_instances_terminate(monkeypatch):

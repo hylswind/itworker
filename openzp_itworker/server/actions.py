@@ -180,7 +180,25 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     # version secret in memory. This is the one step order truly matters for.
     _wait_instances_terminated(ec2, app_instance_ids)
     _delete_signin_lock(ctx.client("signin"), p.account_id)
+    _delete_signin_anchor_vpc(ec2)
     return {}
+
+
+def _delete_signin_anchor_vpc(ec2) -> None:
+    """Drop the empty VPC the sign-in lock was anchored to, now that the lock is gone.
+
+    Strictly AFTER _delete_signin_lock: remove the anchor while the lock still stands
+    and its condition can never be satisfied again — the console would be sealed for
+    good. Failure is swallowed because by this point console login is already
+    restored, so a leftover empty VPC is untidy rather than harmful. A VPC that still
+    holds subnets or interfaces simply refuses to delete; it is not ours to empty."""
+    try:
+        vpcs = ec2.describe_vpcs(
+            Filters=[{"Name": "tag:Name", "Values": [config.SIGNIN_LOCK_VPC_NAME]}]).get("Vpcs", [])
+    except Exception:  # noqa: BLE001 — nothing here is worth failing a recovery over
+        return
+    for vpc in vpcs:
+        _swallow(ec2.delete_vpc, VpcId=vpc["VpcId"])
 
 
 def _delete_bake_output(ctx: Ctx, manifest: dict) -> None:
