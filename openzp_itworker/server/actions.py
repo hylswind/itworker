@@ -180,7 +180,7 @@ def recover(ctx: Ctx, payload: dict) -> dict:
     # version secret in memory. This is the one step order truly matters for.
     _wait_instances_terminated(ec2, app_instance_ids)
     _delete_signin_lock(ctx.client("signin"), p.account_id)
-    return {"recovered": True}
+    return {}
 
 
 def _delete_bake_output(ctx: Ctx, manifest: dict) -> None:
