@@ -112,7 +112,7 @@ def delete(ctx: Ctx, payload: dict) -> dict:
     _swallow(ssm.delete_parameter, Name=config.SECRET_PARAM.format(app=app, commit=commit))
     _delete_version_role(ctx, m["secret_role"])
     _swallow(ssm.delete_parameter, Name=manifest_name)
-    return {"app": app, "commit": commit}
+    return {}  # nothing to hand back: the job status is the whole answer
 
 
 # ---------- recover ----------

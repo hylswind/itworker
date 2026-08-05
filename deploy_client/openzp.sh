@@ -31,7 +31,7 @@ while :; do
   status=$(jq -r '.status' <<<"$doc")
   echo "  $status"
   case "$status" in
-    SUCCEEDED) jq -r '.result // empty' <<<"$doc"; exit 0 ;;
+    SUCCEEDED) jq -r '.result // {} | select(length > 0)' <<<"$doc"; exit 0 ;;
     FAILED | ABORTED) jq -r '.error // empty' <<<"$doc" >&2; exit 1 ;;
   esac
   sleep "$interval"
